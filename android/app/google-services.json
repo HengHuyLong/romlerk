@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1031356515191",
+    "project_id": "romlerk",
+    "storage_bucket": "romlerk.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1031356515191:android:2c255f4bffdc193ee8d772",
+        "android_client_info": {
+          "package_name": "com.example.romlerk"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBdv6iK5C5p1Vw9TEirz1OmLIrrRX3owqc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
