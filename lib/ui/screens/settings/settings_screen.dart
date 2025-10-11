@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // ✅ added for logout
 import '../../../core/theme/app_typography.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../widgets/app_background.dart';
 import '../../../core/providers/user_provider.dart';
+import '../splash/simple_splash_screen.dart'; // ✅ navigate back to splash
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // ✅ Get user from Riverpod provider
     final user = ref.watch(userProvider);
 
     return AppBackground(
@@ -29,16 +30,16 @@ class SettingsScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 12),
 
-              // 🔹 User info (dynamic from provider)
+              // 🔹 User info (from provider)
               Text(
-                user.name,
+                user?.name ?? "Unnamed User",
                 style: AppTypography.h3.copyWith(
                   color: AppColors.darkGray,
                   fontWeight: FontWeight.w600,
                 ),
               ),
               Text(
-                user.phone,
+                user?.phone ?? "No phone number",
                 style: AppTypography.body.copyWith(
                   color: AppColors.darkGray.withValues(alpha: 0.8),
                 ),
@@ -146,11 +147,28 @@ class SettingsScreen extends ConsumerWidget {
                   );
 
                   if (confirm == true) {
-                    if (!context.mounted) return;
-                    // TODO: implement real logout logic
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("Logged out")),
-                    );
+                    try {
+                      await FirebaseAuth.instance.signOut(); // ✅ sign out user
+                      ref
+                          .read(userProvider.notifier)
+                          .clear(); // ✅ clear user state
+
+                      if (!context.mounted) return;
+
+                      // ✅ Go back to splash entry point
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const SimpleSplashScreen(),
+                        ),
+                        (route) => false,
+                      );
+                    } catch (e) {
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text("Logout failed: $e")),
+                      );
+                    }
                   }
                 },
               ),

@@ -14,8 +14,10 @@ class NationalId extends BaseDocument {
   final String? mrz1;
   final String? mrz2;
   final String? mrz3;
+  final String? imageUrl; // ✅ Document image support
 
   NationalId({
+    super.id, // ✅ Firestore/Backend document ID
     this.idNumber,
     this.nameKh,
     this.nameEn,
@@ -29,7 +31,33 @@ class NationalId extends BaseDocument {
     this.mrz1,
     this.mrz2,
     this.mrz3,
+    this.imageUrl,
   });
+
+  // ✅ Supports both flat JSON and nested { "data": { ... } } backend format
+  factory NationalId.fromJson(Map<String, dynamic> json) {
+    // Detect if data is nested inside "data"
+    final raw =
+        json['data'] is Map ? Map<String, dynamic>.from(json['data']) : json;
+
+    return NationalId(
+      id: json['id']?.toString(), // always keep top-level id
+      idNumber: raw['idNumber'] as String?,
+      nameKh: raw['nameKh'] as String?,
+      nameEn: raw['nameEn'] as String?,
+      dateOfBirth: raw['dateOfBirth'] as String?,
+      gender: raw['gender'] as String?,
+      height: raw['height'] as String?,
+      placeOfBirth: raw['placeOfBirth'] as String?,
+      address: raw['address'] as String?,
+      issuedDate: raw['issuedDate'] as String?,
+      expiryDate: raw['expiryDate'] as String?,
+      mrz1: raw['mrz1'] as String?,
+      mrz2: raw['mrz2'] as String?,
+      mrz3: raw['mrz3'] as String?,
+      imageUrl: raw['imageUrl'] as String?,
+    );
+  }
 
   @override
   List<DocumentField> toFields() => [
@@ -61,14 +89,14 @@ class NationalId extends BaseDocument {
           label: "ភេទ",
           value: gender,
           type: FieldType.dropdown,
-          options: ["ប្រុស", "ស្រី"], // ✅ gender dropdown
+          options: ["ប្រុស", "ស្រី"],
         ),
         DocumentField(
           key: "height",
           label: "កំពស់ (ស.ម)",
           value: height,
           type: FieldType.number,
-          maxLength: 3, // ✅ 3 digits max
+          maxLength: 3,
         ),
         DocumentField(
           key: "placeOfBirth",
@@ -99,6 +127,7 @@ class NationalId extends BaseDocument {
   @override
   NationalId copyWithFields(Map<String, String> updatedFields) {
     return NationalId(
+      id: id, // ✅ preserve document ID
       idNumber: updatedFields["idNumber"] ?? idNumber,
       nameKh: updatedFields["nameKh"] ?? nameKh,
       nameEn: updatedFields["nameEn"] ?? nameEn,
@@ -112,6 +141,29 @@ class NationalId extends BaseDocument {
       mrz1: mrz1,
       mrz2: mrz2,
       mrz3: mrz3,
+      imageUrl: imageUrl,
     );
+  }
+
+  @override
+  Map<String, dynamic> toJson() {
+    return {
+      if (id != null) 'id': id, // ✅ include only if available
+      'type': 'national_id',
+      'idNumber': idNumber,
+      'nameKh': nameKh,
+      'nameEn': nameEn,
+      'dateOfBirth': dateOfBirth,
+      'gender': gender,
+      'height': height,
+      'placeOfBirth': placeOfBirth,
+      'address': address,
+      'issuedDate': issuedDate,
+      'expiryDate': expiryDate,
+      'mrz1': mrz1,
+      'mrz2': mrz2,
+      'mrz3': mrz3,
+      if (imageUrl != null) 'imageUrl': imageUrl,
+    };
   }
 }

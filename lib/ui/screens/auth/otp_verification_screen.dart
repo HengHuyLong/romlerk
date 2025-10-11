@@ -1,12 +1,20 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:romlerk/ui/screens/home/home_screen.dart';
+import 'package:romlerk/ui/screens/onboarding/profile_setup_screen.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
+import 'package:romlerk/data/services/auth_service.dart';
+import 'package:romlerk/data/repositories/user_repository.dart';
+import '../../../core/providers/user_provider.dart';
 
-class OtpVerificationScreen extends StatefulWidget {
+// Note: This screen now depends on a UserRepository. Ensure you have a provider for it.
+// e.g., final userRepositoryProvider = Provider((ref) => UserRepository());
+
+class OtpVerificationScreen extends ConsumerStatefulWidget {
   final String phoneNumber;
   final String verificationId;
 
@@ -17,10 +25,11 @@ class OtpVerificationScreen extends StatefulWidget {
   });
 
   @override
-  State<OtpVerificationScreen> createState() => _OtpVerificationScreenState();
+  ConsumerState<OtpVerificationScreen> createState() =>
+      _OtpVerificationScreenState();
 }
 
-class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
+class _OtpVerificationScreenState extends ConsumerState<OtpVerificationScreen> {
   static const int _otpLength = 6;
   static const int _cooldownSeconds = 30;
 
@@ -33,7 +42,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   bool get _canResend => _secondsLeft == 0;
   String get _code => _controllers.map((c) => c.text).join();
   bool get _isComplete => _code.length == _otpLength;
-  late String _verificationId; // ✅ local copy to update after resend
+  late String _verificationId;
 
   @override
   void initState() {
@@ -73,29 +82,64 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
     });
   }
 
-  Future<void> _validateAndSubmit() async {
-    final code = _code;
-    if (code.length == _otpLength) {
-      try {
-        final credential = PhoneAuthProvider.credential(
-          verificationId: _verificationId,
-          smsCode: code,
+  /// FIX: Created a single, reusable function to handle the post-Firebase-auth flow.
+  /// This function calls the repository, updates the state, and navigates.
+  Future<void> _processBackendLogin(String idToken) async {
+    try {
+      final result = await UserRepository.loginAndCache(idToken: idToken);
+
+      if (!mounted) return;
+
+      if (result == null) {
+        setState(() => _errorText = "Server unreachable. Try again later.");
+        return;
+      }
+
+      // Update global user state
+      ref.read(userProvider.notifier).setUser(result.user);
+
+      // Navigate based on whether the user is new or existing
+      if (result.isNew) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const ProfileSetupScreen()),
+          (route) => false,
         );
-
-        await FirebaseAuth.instance.signInWithCredential(credential);
-        if (!mounted) return;
-
+      } else {
         Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (_) => const HomeScreen()),
           (route) => false,
         );
-      } on FirebaseAuthException {
-        if (!mounted) return;
-        setState(() {
-          _errorText = "Invalid code. Please try again.";
-        });
       }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _errorText = "An unexpected error occurred.");
+    }
+  }
+
+  Future<void> _validateAndSubmit() async {
+    if (!_isComplete) return;
+    FocusScope.of(context).unfocus();
+
+    try {
+      // ✅ Step 1: Verify OTP with Firebase
+      final idToken = await AuthService().signInWithOtp(
+        verificationId: _verificationId,
+        smsCode: _code,
+      );
+
+      if (!mounted) return;
+      if (idToken == null) {
+        setState(() => _errorText = "Authentication failed. Try again.");
+        return;
+      }
+
+      // Step 2 & 3: Use the centralized login processor
+      await _processBackendLogin(idToken);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _errorText = "Invalid code. Please try again.");
     }
   }
 
@@ -104,7 +148,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
 
     setState(() {
       _errorText = null;
-      _secondsLeft = -1;
+      _secondsLeft = -1; // Indicates resend is in progress
     });
 
     final auth = FirebaseAuth.instance;
@@ -114,37 +158,39 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       await auth.verifyPhoneNumber(
         phoneNumber: formattedPhone,
         timeout: const Duration(seconds: 60),
+
+        /// It no longer bypasses the backend, ensuring user data is consistent.
         verificationCompleted: (PhoneAuthCredential credential) async {
-          await auth.signInWithCredential(credential);
+          final userCredential = await auth.signInWithCredential(credential);
+          final idToken = await userCredential.user?.getIdToken();
+
           if (!mounted) return;
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const HomeScreen()),
-          );
+          if (idToken != null) {
+            await _processBackendLogin(idToken);
+          } else {
+            setState(() => _errorText = "Auto-verification failed.");
+          }
         },
         verificationFailed: (FirebaseAuthException e) {
           if (!mounted) return;
-          setState(() {
-            _errorText = "Resend failed: ${e.message}";
-          });
+          setState(() => _errorText = "Resend failed: ${e.message}");
         },
         codeSent: (String newVerificationId, int? resendToken) {
           if (!mounted) return;
           setState(() {
-            _verificationId = newVerificationId; // ✅ update verificationId
+            _verificationId = newVerificationId;
             _errorText = null;
           });
-          _startResendCooldown(); // restart timer
+          _startResendCooldown();
         },
         codeAutoRetrievalTimeout: (String newVerificationId) {
+          if (!mounted) return;
           _verificationId = newVerificationId;
         },
       );
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _errorText = "Resend error: $e";
-      });
+      setState(() => _errorText = "Resend error: $e");
     }
   }
 
@@ -158,14 +204,10 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.arrow_back_ios_new_rounded),
-                    color: AppColors.black,
-                  ),
-                ],
+              IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                color: AppColors.black,
               ),
               const SizedBox(height: 50),
               Text(
@@ -183,8 +225,6 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                 ),
               ),
               const SizedBox(height: 28),
-
-              // OTP boxes
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: List.generate(_otpLength, (i) {
@@ -207,8 +247,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                         cursorColor: AppColors.green,
                         decoration: const InputDecoration(
                           isDense: true,
-                          contentPadding:
-                              EdgeInsets.symmetric(vertical: 12, horizontal: 0),
+                          contentPadding: EdgeInsets.symmetric(vertical: 12),
                           enabledBorder: UnderlineInputBorder(
                             borderSide:
                                 BorderSide(color: AppColors.black, width: 1.4),
@@ -218,77 +257,60 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                                 BorderSide(color: AppColors.green, width: 1.6),
                           ),
                         ),
-                        onChanged: (v) {
-                          _onChanged(i, v);
-                          _errorText = null; // clear error on input
-                        },
+                        onChanged: (v) => _onChanged(i, v),
                       ),
                     ),
                   );
                 }),
               ),
-
-              // Inline error message
               if (_errorText != null) ...[
                 const SizedBox(height: 10),
                 Center(
                   child: Text(
                     _errorText!,
-                    style: AppTypography.body.copyWith(
-                      color: Colors.red,
-                      fontSize: 14,
-                    ),
+                    style: AppTypography.body
+                        .copyWith(color: Colors.red, fontSize: 14),
                     textAlign: TextAlign.center,
                   ),
                 ),
               ],
-
               const SizedBox(height: 20),
-
-              // ✅ Resend button
               Center(
                 child: TextButton(
                   onPressed: _canResend ? _handleResend : null,
                   style: ButtonStyle(
                     foregroundColor: WidgetStateProperty.resolveWith((states) {
-                      if (states.contains(WidgetState.disabled)) {
-                        return AppColors.black.withValues(alpha: 0.35);
-                      }
-                      return AppColors.green;
+                      return states.contains(WidgetState.disabled)
+                          ? AppColors.black.withValues(alpha: 0.35)
+                          : AppColors.green;
                     }),
                     textStyle: WidgetStatePropertyAll(
-                      AppTypography.bodyBold.copyWith(
-                        decoration: TextDecoration.underline,
-                      ),
+                      AppTypography.bodyBold
+                          .copyWith(decoration: TextDecoration.underline),
                     ),
                   ),
                   child: Text(
                     _secondsLeft == -1
-                        ? "Code resent"
+                        ? "Sending code..."
                         : _canResend
-                            ? "Don’t receive the sms ? Resend code"
-                            : "Resend code ${_secondsLeft}s",
+                            ? "Don’t receive the SMS? Resend code"
+                            : "Resend code in ${_secondsLeft}s",
                   ),
                 ),
               ),
-
               const Spacer(),
-
               Center(
                 child: TextButton(
                   onPressed: _isComplete ? _validateAndSubmit : null,
                   style: ButtonStyle(
                     foregroundColor: WidgetStateProperty.resolveWith((states) {
-                      if (states.contains(WidgetState.disabled)) {
-                        return AppColors.black.withValues(alpha: 0.35);
-                      }
-                      return AppColors.green;
+                      return states.contains(WidgetState.disabled)
+                          ? AppColors.black.withValues(alpha: 0.35)
+                          : AppColors.green;
                     }),
                     textStyle: WidgetStatePropertyAll(
-                      AppTypography.bodyBold.copyWith(
-                        letterSpacing: 1.0,
-                        fontSize: 18,
-                      ),
+                      AppTypography.bodyBold
+                          .copyWith(letterSpacing: 1.0, fontSize: 18),
                     ),
                   ),
                   child: const Text('CONTINUE'),
@@ -318,14 +340,24 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
         i > 0) {
       _nodes[i - 1].requestFocus();
       _controllers[i - 1].clear();
-      setState(() {});
+      setState(() {}); // Update UI to reflect change in _isComplete
     }
   }
 
   void _onChanged(int i, String value) {
-    if (value.isNotEmpty && i < _otpLength - 1) {
-      _nodes[i + 1].requestFocus();
+    if (_errorText != null) {
+      setState(() => _errorText = null);
     }
+
+    if (value.isNotEmpty) {
+      if (i < _otpLength - 1) {
+        _nodes[i + 1].requestFocus();
+      } else {
+        // Last digit entered, trigger submission if complete
+        if (_isComplete) _validateAndSubmit();
+      }
+    }
+    // Always call setState to update the UI (e.g., button state)
     setState(() {});
   }
 }

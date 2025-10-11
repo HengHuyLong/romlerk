@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:romlerk/core/theme/app_colors.dart';
 import 'package:romlerk/core/theme/app_typography.dart';
@@ -9,11 +10,13 @@ import 'package:romlerk/ui/screens/scan/document_preview_screen.dart';
 class DocumentEditScreen extends StatefulWidget {
   final DocumentType type;
   final BaseDocument document;
+  final File? originalImage; // ✅ field added
 
   const DocumentEditScreen({
     super.key,
     required this.type,
     required this.document,
+    this.originalImage, // ✅ fixed constructor
   });
 
   @override
@@ -96,9 +99,9 @@ class _DocumentEditScreenState extends State<DocumentEditScreen> {
         context,
         MaterialPageRoute(
           builder: (_) => DocumentPreviewScreen(
-            type: widget.type,
-            data: updatedDoc,
-          ),
+              type: widget.type,
+              data: updatedDoc,
+              originalImage: widget.originalImage),
         ),
       );
     }
@@ -181,7 +184,7 @@ class _DocumentEditScreenState extends State<DocumentEditScreen> {
         }
 
         return DropdownButtonFormField<String>(
-          value: currentValue,
+          initialValue: currentValue,
           items: field.options
               ?.toSet()
               .map((opt) => DropdownMenuItem(value: opt, child: Text(opt)))
