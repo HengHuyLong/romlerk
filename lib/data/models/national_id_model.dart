@@ -18,6 +18,7 @@ class NationalId extends BaseDocument {
 
   NationalId({
     super.id, // ✅ Firestore/Backend document ID
+    super.profileId, // ✅ Add profile ID support
     this.idNumber,
     this.nameKh,
     this.nameEn,
@@ -36,12 +37,12 @@ class NationalId extends BaseDocument {
 
   // ✅ Supports both flat JSON and nested { "data": { ... } } backend format
   factory NationalId.fromJson(Map<String, dynamic> json) {
-    // Detect if data is nested inside "data"
     final raw =
         json['data'] is Map ? Map<String, dynamic>.from(json['data']) : json;
 
     return NationalId(
       id: json['id']?.toString(), // always keep top-level id
+      profileId: raw['profileId'] as String?, // ✅ support sub-profile
       idNumber: raw['idNumber'] as String?,
       nameKh: raw['nameKh'] as String?,
       nameEn: raw['nameEn'] as String?,
@@ -128,6 +129,7 @@ class NationalId extends BaseDocument {
   NationalId copyWithFields(Map<String, String> updatedFields) {
     return NationalId(
       id: id, // ✅ preserve document ID
+      profileId: profileId, // ✅ preserve linked profile ID
       idNumber: updatedFields["idNumber"] ?? idNumber,
       nameKh: updatedFields["nameKh"] ?? nameKh,
       nameEn: updatedFields["nameEn"] ?? nameEn,
@@ -147,8 +149,9 @@ class NationalId extends BaseDocument {
 
   @override
   Map<String, dynamic> toJson() {
+    final json = super.toJson(); // ✅ includes id + profileId automatically
     return {
-      if (id != null) 'id': id, // ✅ include only if available
+      ...json,
       'type': 'national_id',
       'idNumber': idNumber,
       'nameKh': nameKh,

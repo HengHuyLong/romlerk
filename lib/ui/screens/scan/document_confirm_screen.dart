@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart'; // ✅ Added
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:romlerk/core/theme/app_colors.dart';
 import 'package:romlerk/core/theme/app_typography.dart';
@@ -9,11 +9,10 @@ import 'package:romlerk/ui/widgets/app_button.dart';
 import 'package:romlerk/data/models/document_type.dart';
 import 'package:romlerk/data/models/base_document.dart';
 import 'package:romlerk/data/services/api_service.dart';
-import 'package:romlerk/core/providers/documents_provider.dart'; // ✅ Added
+import 'package:romlerk/core/providers/documents_provider.dart';
 import 'package:romlerk/ui/screens/home/home_screen.dart';
 import 'select_profile_screen.dart';
 
-// ✅ Changed: use ConsumerStatefulWidget to access Riverpod ref
 class DocumentConfirmScreen extends ConsumerStatefulWidget {
   final DocumentType type;
   final BaseDocument document;
@@ -32,13 +31,11 @@ class DocumentConfirmScreen extends ConsumerStatefulWidget {
 }
 
 class _DocumentConfirmScreenState extends ConsumerState<DocumentConfirmScreen> {
-  // ✅ changed to ConsumerState
-  String? selectedProfile;
+  Map<String, dynamic>? selectedProfile;
 
   Future<void> _saveDocument() async {
     if (selectedProfile == null) return;
 
-    // 🔹 Show blurred loading overlay
     if (!mounted) return;
     showDialog(
       context: context,
@@ -69,10 +66,6 @@ class _DocumentConfirmScreenState extends ConsumerState<DocumentConfirmScreen> {
                     Text(
                       "Saving...",
                       textAlign: TextAlign.center,
-                      textHeightBehavior: const TextHeightBehavior(
-                        applyHeightToFirstAscent: false,
-                        applyHeightToLastDescent: false,
-                      ),
                       style: AppTypography.body.copyWith(
                         color: AppColors.black,
                         fontSize: 14,
@@ -98,7 +91,6 @@ class _DocumentConfirmScreenState extends ConsumerState<DocumentConfirmScreen> {
         throw Exception("Missing Firebase ID token");
       }
 
-      // ✅ Upload image first (if available)
       String? imageUrl;
       if (widget.originalImage != null) {
         imageUrl = await ApiService.uploadImage(
@@ -110,14 +102,13 @@ class _DocumentConfirmScreenState extends ConsumerState<DocumentConfirmScreen> {
 
       if (!mounted) return;
 
-      // ✅ Include image URL in the document metadata
       final Map<String, dynamic> documentData = {
         ...Map<String, dynamic>.from(widget.document.toJson()),
-        'profile': selectedProfile!,
+        'profileId': selectedProfile!["id"],
+        'profileName': selectedProfile!["name"],
         if (imageUrl != null) 'imageUrl': imageUrl,
       };
 
-      // ✅ Save document to backend
       final response = await ApiService.saveDocument(
         idToken: idToken,
         documentData: documentData,
@@ -127,7 +118,6 @@ class _DocumentConfirmScreenState extends ConsumerState<DocumentConfirmScreen> {
       Navigator.of(context).pop(); // close loading dialog
 
       if (response != null) {
-        // ✅ NEW: update Riverpod provider so DocumentsScreen refreshes instantly
         ref.read(documentsProvider.notifier).addDocument(widget.document);
 
         if (!mounted) return;
@@ -136,36 +126,6 @@ class _DocumentConfirmScreenState extends ConsumerState<DocumentConfirmScreen> {
           await Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(builder: (_) => const HomeScreen()),
             (route) => false,
-          );
-
-          if (!mounted) return;
-          showDialog(
-            context: context,
-            builder: (_) {
-              return AlertDialog(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                title: const Text(
-                  "Success 🎉",
-                  textAlign: TextAlign.center,
-                ),
-                content: const Text(
-                  "Your document has been saved successfully!",
-                  textAlign: TextAlign.center,
-                ),
-                actionsAlignment: MainAxisAlignment.center,
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text(
-                      "OK",
-                      style: TextStyle(color: AppColors.green),
-                    ),
-                  ),
-                ],
-              );
-            },
           );
         });
       } else {
@@ -206,7 +166,6 @@ class _DocumentConfirmScreenState extends ConsumerState<DocumentConfirmScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ Nothing below changed — your entire UI remains the same
     return Scaffold(
       backgroundColor: AppColors.white,
       appBar: AppBar(
@@ -220,8 +179,6 @@ class _DocumentConfirmScreenState extends ConsumerState<DocumentConfirmScreen> {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             const SizedBox(height: 8),
-
-            // 🔹 Step indicator (step 4 of 4)
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: List.generate(4, (index) {
@@ -254,8 +211,6 @@ class _DocumentConfirmScreenState extends ConsumerState<DocumentConfirmScreen> {
               }),
             ),
             const SizedBox(height: 24),
-
-            // 🔹 Title
             Text(
               "Add to a profile",
               style: AppTypography.bodyBold.copyWith(
@@ -274,11 +229,9 @@ class _DocumentConfirmScreenState extends ConsumerState<DocumentConfirmScreen> {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 32),
-
-            // 🔹 Profile selection field
             GestureDetector(
               onTap: () async {
-                final result = await Navigator.push<String>(
+                final result = await Navigator.push<Map<String, dynamic>>(
                   context,
                   MaterialPageRoute(
                     builder: (_) => const SelectProfileScreen(),
@@ -302,7 +255,7 @@ class _DocumentConfirmScreenState extends ConsumerState<DocumentConfirmScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      selectedProfile ?? "Select profile",
+                      selectedProfile?["name"] ?? "Select profile",
                       style: AppTypography.body.copyWith(
                         color: selectedProfile == null
                             ? AppColors.darkGray.withValues(alpha: 0.6)
@@ -316,8 +269,6 @@ class _DocumentConfirmScreenState extends ConsumerState<DocumentConfirmScreen> {
               ),
             ),
             const Spacer(),
-
-            // 🔹 Done button
             AppButton(
               text: "Done",
               isDisabled: selectedProfile == null,

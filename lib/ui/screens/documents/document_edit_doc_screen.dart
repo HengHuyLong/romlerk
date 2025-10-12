@@ -75,25 +75,16 @@ class _DocumentEditInfoScreenState
       final token = await authService.getToken();
 
       if (!mounted) return;
-      final scaffoldMessenger = ScaffoldMessenger.of(context);
       final navigator = Navigator.of(context);
 
-      if (token == null || token.isEmpty) {
-        scaffoldMessenger.showSnackBar(
-          const SnackBar(content: Text("Missing Firebase ID token.")),
-        );
+      if (token == null ||
+          token.isEmpty ||
+          documentId == null ||
+          documentId.isEmpty) {
         return;
       }
 
-      if (documentId == null || documentId.isEmpty) {
-        scaffoldMessenger.showSnackBar(
-          const SnackBar(content: Text("Invalid document ID.")),
-        );
-        return;
-      }
-
-      // 🔹 Show loading
-      if (!mounted) return;
+      // 🔹 Show loading dialog
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -103,27 +94,38 @@ class _DocumentEditInfoScreenState
         ),
       );
 
-      // 🔹 Update existing document
+      // 🔹 Include profileId for sub-profiles (if available)
       debugPrint("🧩 Updating document ID: $documentId");
+      final updatedData = updatedDoc.toJson();
+
+      final profileId = widget.document.profileId;
+      if (profileId != null && profileId.isNotEmpty) {
+        updatedData['profileId'] = profileId;
+      }
+
+      // 🔹 API call
       await ApiService.updateDocument(
         idToken: token,
         documentId: documentId,
-        documentData: updatedDoc.toJson(),
+        documentData: updatedData,
       );
 
       if (!mounted) return;
-      navigator.pop(); // close loading
+      navigator.pop(); // close loading dialog
 
-      // 🔹 Refresh provider cache
-      ref.read(documentsProvider.notifier).refresh();
+      // ✅ Instantly update local cache
+      final notifier = ref.read(documentsProvider.notifier);
+      notifier.updateLocalDocument(updatedDoc);
 
-      // ✅ Return updated document to detail screen
-      if (mounted) navigator.pop(updatedDoc);
+      // ✅ Force refresh HomeScreen providers
+      await Future.delayed(const Duration(milliseconds: 150));
+      notifier.invalidateAllProfileCaches(ref);
+
+      // ✅ Pop back with updated document
+      navigator.pop(updatedDoc);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error saving document: $e")),
-      );
+      debugPrint("❌ Error saving document: $e");
     }
   }
 
@@ -176,7 +178,7 @@ class _DocumentEditInfoScreenState
     switch (field.type) {
       case FieldType.dropdown:
         return DropdownButtonFormField<String>(
-          initialValue: controller.text.isNotEmpty ? controller.text : null,
+          value: controller.text.isNotEmpty ? controller.text : null,
           items: field.options
               ?.map((opt) => DropdownMenuItem(value: opt, child: Text(opt)))
               .toList(),

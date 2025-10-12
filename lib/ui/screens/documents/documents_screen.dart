@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:romlerk/core/providers/documents_provider.dart';
 import 'package:romlerk/core/providers/user_provider.dart';
+import 'package:romlerk/core/providers/navigation_provider.dart';
+import 'package:romlerk/core/providers/profiles_provider.dart';
 import 'package:romlerk/core/theme/app_colors.dart';
 import 'package:romlerk/core/theme/app_typography.dart';
 import 'package:romlerk/ui/screens/documents/document_detail_screen.dart';
-import 'package:romlerk/core/providers/navigation_provider.dart'; // ✅ added
-// Removed direct import of scan_screen.dart
+import 'package:romlerk/ui/screens/documents/profiles/create_profile_screen.dart';
 
 class DocumentsScreen extends ConsumerStatefulWidget {
   const DocumentsScreen({super.key});
@@ -17,10 +19,12 @@ class DocumentsScreen extends ConsumerStatefulWidget {
 }
 
 class _DocumentsScreenState extends ConsumerState<DocumentsScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final AnimationController _controller;
   late final Animation<double> _sizeAnimation;
   bool _expanded = true;
+
+  final Map<String, bool> _expandedProfiles = {};
 
   @override
   void initState() {
@@ -49,7 +53,12 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen>
     });
   }
 
-  // ✅ Updated: instead of pushing a new route, switch tab in HomeScreen
+  void _toggleSubProfile(String id) {
+    setState(() {
+      _expandedProfiles[id] = !(_expandedProfiles[id] ?? true);
+    });
+  }
+
   void _navigateToScan(BuildContext context) {
     ref.read(navIndexProvider.notifier).state = 2; // 2 = Scan tab
   }
@@ -57,12 +66,22 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen>
   @override
   Widget build(BuildContext context) {
     final documentsState = ref.watch(documentsProvider);
+    final profilesState = ref.watch(profilesProvider);
     final user = ref.watch(userProvider);
 
     return SafeArea(
       child: RefreshIndicator(
-        onRefresh: () async =>
-            await ref.read(documentsProvider.notifier).refresh(),
+        onRefresh: () async {
+          // ✅ Refresh both main and sub profiles
+          await ref.read(documentsProvider.notifier).refresh();
+          await ref.read(profilesProvider.notifier).fetchProfiles();
+
+          // ✅ Refresh all sub-profile document caches properly
+          final profiles = ref.read(profilesProvider).value ?? [];
+          for (final p in profiles) {
+            ref.invalidate(documentsProviderForProfile(p.id));
+          }
+        },
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
@@ -71,7 +90,11 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen>
             children: [
               OutlinedButton.icon(
                 onPressed: () {
-                  // TODO: navigate to profile creation
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const CreateProfileScreen()),
+                  );
                 },
                 style: OutlinedButton.styleFrom(
                   side: BorderSide(
@@ -128,6 +151,8 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen>
               const SizedBox(height: 24),
               Divider(color: AppColors.darkGray.withValues(alpha: 0.15)),
               const SizedBox(height: 8),
+
+              // ✅ Main profile section
               documentsState.when(
                 loading: () => const Center(
                   child: Padding(
@@ -152,10 +177,7 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen>
                       ? "${user!.name}'s Documents"
                       : "User's Documents";
 
-                  final allDocs = [
-                    ...documents,
-                    "add_more",
-                  ];
+                  final allDocs = [...documents, "add_more"];
 
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -195,32 +217,168 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen>
                         sizeFactor: _sizeAnimation,
                         child: FadeTransition(
                           opacity: _sizeAnimation,
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 10),
-                            child: GridView.builder(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              itemCount: allDocs.length,
-                              gridDelegate:
-                                  const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 3,
-                                mainAxisSpacing: 30,
-                                crossAxisSpacing: 14,
-                                childAspectRatio: 0.65,
-                              ),
-                              itemBuilder: (context, index) {
-                                final item = allDocs[index];
-                                if (item == "add_more") {
-                                  return _buildAddMoreCard(context);
-                                } else {
-                                  return _buildDocumentItem(context, item);
-                                }
-                              },
-                            ),
-                          ),
+                          child: _buildGrid(allDocs),
                         ),
                       ),
                     ],
+                  );
+                },
+              ),
+              const SizedBox(height: 20),
+              Divider(color: AppColors.darkGray.withValues(alpha: 0.15)),
+
+              // ✅ Sub-profile section
+              profilesState.when(
+                loading: () => const Padding(
+                  padding: EdgeInsets.all(20),
+                  child: Center(
+                    child: CircularProgressIndicator(color: AppColors.green),
+                  ),
+                ),
+                error: (err, _) => Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Text(
+                    "Failed to load profiles: $err",
+                    style: AppTypography.body.copyWith(color: Colors.red),
+                  ),
+                ),
+                data: (profiles) {
+                  if (profiles.isEmpty) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      child: Center(
+                        child: Text(
+                          "No sub-profiles found",
+                          style: AppTypography.body.copyWith(
+                            color: AppColors.darkGray,
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+
+                  final avatarMap = {
+                    'Mom': 'assets/images/mom_avatar.svg',
+                    'Dad': 'assets/images/dad_avatar.svg',
+                    'Grandpa': 'assets/images/grandpa_avatar.svg',
+                    'Grandma': 'assets/images/grandma_avatar.svg',
+                    'Son': 'assets/images/son_avatar.svg',
+                    'Daughter': 'assets/images/daughter_avatar.svg',
+                    'Brother': 'assets/images/brother_avatar.svg',
+                    'Sister': 'assets/images/sister_avatar.svg',
+                    'Other': 'assets/images/other_avatar.svg',
+                  };
+
+                  return Column(
+                    children: profiles.map((profile) {
+                      final isExpanded = _expandedProfiles[profile.id] ?? true;
+                      final avatarPath =
+                          avatarMap[profile.type] ?? avatarMap['Other']!;
+                      final docsAsync =
+                          ref.watch(documentsProviderForProfile(profile.id));
+
+                      return Column(
+                        children: [
+                          InkWell(
+                            onTap: () => _toggleSubProfile(profile.id),
+                            borderRadius: BorderRadius.circular(8),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 4, vertical: 10),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Row(
+                                      children: [
+                                        Text(
+                                          "${profile.name}'s Documents",
+                                          style: AppTypography.body.copyWith(
+                                            color: AppColors.black,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        SizedBox(
+                                          height: 28,
+                                          width: 28,
+                                          child: SvgPicture.asset(
+                                            avatarPath,
+                                            fit: BoxFit.contain,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          profile.type,
+                                          style: AppTypography.body.copyWith(
+                                            color: AppColors.green,
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  IconButton(
+                                    onPressed: () {
+                                      // TODO: navigate to edit profile
+                                    },
+                                    icon: const Icon(
+                                      Icons.edit_outlined,
+                                      size: 18,
+                                      color: AppColors.green,
+                                    ),
+                                    splashRadius: 20,
+                                  ),
+                                  AnimatedRotation(
+                                    turns: isExpanded ? 0.25 : 0.0,
+                                    duration: const Duration(milliseconds: 250),
+                                    child: const Icon(
+                                      Icons.keyboard_arrow_right_rounded,
+                                      size: 28,
+                                      color: AppColors.darkGray,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          AnimatedCrossFade(
+                            duration: const Duration(milliseconds: 300),
+                            crossFadeState: isExpanded
+                                ? CrossFadeState.showFirst
+                                : CrossFadeState.showSecond,
+                            firstChild: docsAsync.when(
+                              loading: () => const Padding(
+                                padding: EdgeInsets.all(20),
+                                child: Center(
+                                  child: CircularProgressIndicator(
+                                    color: AppColors.green,
+                                  ),
+                                ),
+                              ),
+                              error: (err, _) => Padding(
+                                padding: const EdgeInsets.all(20),
+                                child: Text(
+                                  "Failed to load ${profile.name}'s documents",
+                                  style: AppTypography.body.copyWith(
+                                    color: Colors.red,
+                                  ),
+                                ),
+                              ),
+                              data: (docs) {
+                                final allDocs = [...docs, "add_more"];
+                                return Padding(
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 10),
+                                  child: _buildGrid(allDocs),
+                                );
+                              },
+                            ),
+                            secondChild: const SizedBox.shrink(),
+                          ),
+                        ],
+                      );
+                    }).toList(),
                   );
                 },
               ),
@@ -228,6 +386,28 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen>
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildGrid(List allDocs) {
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: allDocs.length,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        mainAxisSpacing: 30,
+        crossAxisSpacing: 14,
+        childAspectRatio: 0.65,
+      ),
+      itemBuilder: (context, index) {
+        final item = allDocs[index];
+        if (item == "add_more") {
+          return _buildAddMoreCard(context);
+        } else {
+          return _buildDocumentItem(context, item);
+        }
+      },
     );
   }
 
@@ -240,20 +420,23 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen>
       _ => 'Unknown Document',
     };
 
-    String? expiryText;
+    String expiryText = "No expiry";
     Color expiryColor = AppColors.darkGray;
-    try {
-      final expiry = doc.toJson()['expiryDate'];
-      if (expiry != null && expiry.isNotEmpty) {
-        final expiryDate = DateTime.tryParse(expiry);
+
+    final expiryRaw = doc.toJson()['expiryDate'];
+    if (expiryRaw != null && expiryRaw.toString().isNotEmpty) {
+      try {
+        final expiryDate = DateTime.tryParse(expiryRaw.toString());
         if (expiryDate != null) {
-          final isExpired = expiryDate.isBefore(DateTime.now());
+          final now = DateTime.now();
+          final isExpired = expiryDate.isBefore(now);
           expiryColor = isExpired ? Colors.red : AppColors.green;
           expiryText = DateFormat('dd MMM yyyy').format(expiryDate);
         }
+      } catch (_) {
+        expiryText = "Invalid date";
+        expiryColor = Colors.red;
       }
-    } catch (_) {
-      expiryText = null;
     }
 
     final thumbAsset =
@@ -312,7 +495,7 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen>
         ),
         const SizedBox(height: 4),
         Text(
-          expiryText ?? "No expiry",
+          expiryText,
           textAlign: TextAlign.center,
           style: AppTypography.body.copyWith(
             fontSize: 11,
@@ -330,9 +513,7 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen>
           color: Colors.transparent,
           borderRadius: BorderRadius.circular(14),
           child: GestureDetector(
-            onTap: () {
-              _navigateToScan(context);
-            },
+            onTap: () => _navigateToScan(context),
             child: Container(
               decoration: BoxDecoration(
                 color: AppColors.white,

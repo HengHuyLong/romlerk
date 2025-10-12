@@ -26,8 +26,8 @@ class DocumentsNotifier extends StateNotifier<AsyncValue<List<BaseDocument>>> {
     return await user.getIdToken();
   }
 
-  // 🔹 Fetch all documents from backend
-  Future<void> _fetchDocuments() async {
+  // 🔹 Fetch documents (optionally by profile)
+  Future<void> _fetchDocuments({String? profileId}) async {
     try {
       final idToken = await _getIdToken();
       if (idToken == null) {
@@ -35,13 +35,16 @@ class DocumentsNotifier extends StateNotifier<AsyncValue<List<BaseDocument>>> {
         return;
       }
 
-      final data = await ApiService.fetchDocuments(idToken: idToken);
+      final data = await ApiService.fetchDocuments(
+        idToken: idToken,
+        profileId: profileId,
+      );
+
       if (data == null) {
         state = AsyncError("Failed to fetch documents", StackTrace.current);
         return;
       }
 
-      // ✅ Convert JSON into the right model using fromJson()
       final docs = data.map<BaseDocument>((json) {
         final type = json['type'];
         switch (type) {
@@ -53,40 +56,92 @@ class DocumentsNotifier extends StateNotifier<AsyncValue<List<BaseDocument>>> {
       }).toList();
 
       state = AsyncData(docs);
-      debugPrint('✅ Documents loaded: ${docs.length}');
+      debugPrint(
+          '✅ Documents loaded: ${docs.length} (profile: ${profileId ?? "main"})');
     } catch (e, st) {
       state = AsyncError(e, st);
       debugPrint('🔥 Error fetching documents: $e');
     }
   }
 
-  // 🔁 Refresh manually
-  Future<void> refresh() async {
-    state = const AsyncLoading();
-    await _fetchDocuments();
+  /// 🆕 Public helper: fetch docs and return list (used by other providers)
+  Future<List<BaseDocument>> fetchDocumentsForProfile(String profileId) async {
+    try {
+      final idToken = await _getIdToken();
+      if (idToken == null) throw Exception("User not authenticated");
+
+      final data = await ApiService.fetchDocuments(
+        idToken: idToken,
+        profileId: profileId,
+      );
+
+      if (data == null) throw Exception("Failed to fetch documents");
+
+      return data.map<BaseDocument>((json) {
+        final type = json['type'];
+        switch (type) {
+          case 'national_id':
+            return NationalId.fromJson(json);
+          default:
+            throw Exception("Unsupported document type: $type");
+        }
+      }).toList();
+    } catch (e) {
+      debugPrint('🔥 Error fetching docs for profile: $e');
+      rethrow;
+    }
   }
 
-  // 🆕 Add a document to local state
+  // 🔁 Manual refresh (for all or one profile)
+  Future<void> refresh({String? profileId}) async {
+    state = const AsyncLoading();
+    await _fetchDocuments(profileId: profileId);
+  }
+
+  // 🆕 Add document locally
   void addDocument(BaseDocument doc) {
     final current = state.value ?? [];
     final updated = [...current, doc];
     state = AsyncData(updated);
-    debugPrint("📄 Added document locally (${doc.runtimeType})");
   }
 
-  // ✏️ Update document in local state
+  // ✏️ Update existing document locally
   void updateDocument(BaseDocument updatedDoc) {
     final current = state.value ?? [];
-
-    // ✅ Use real document ID to match
     final updatedList = current.map((doc) {
-      if (doc.id == updatedDoc.id && doc.id != null) {
-        return updatedDoc;
-      }
+      if (doc.id == updatedDoc.id && doc.id != null) return updatedDoc;
       return doc;
     }).toList();
-
     state = AsyncData(updatedList);
-    debugPrint("✏️ Updated document locally (${updatedDoc.runtimeType})");
+  }
+
+  // ✅ Instantly update document after editing (used in edit screen)
+  void updateLocalDocument(BaseDocument updatedDoc) {
+    state.whenData((docs) {
+      final updatedList = docs.map((doc) {
+        if (doc.id == updatedDoc.id) return updatedDoc;
+        return doc;
+      }).toList();
+      state = AsyncValue.data(updatedList);
+      debugPrint("⚡ Document cache updated locally: ${updatedDoc.id}");
+    });
+  }
+
+  // ♻️ Invalidate all per-profile document caches (so HomeScreen refetches)
+  void invalidateAllProfileCaches(WidgetRef ref) {
+    try {
+      ref.invalidate(documentsProvider);
+      ref.invalidate(documentsProviderForProfile);
+      debugPrint("♻️ All document caches invalidated successfully");
+    } catch (e) {
+      debugPrint("⚠️ Cache invalidation failed: $e");
+    }
   }
 }
+
+/// 🔹 FutureProvider to fetch docs per profile (safe access)
+final documentsProviderForProfile =
+    FutureProvider.family<List<BaseDocument>, String>((ref, profileId) async {
+  final notifier = ref.read(documentsProvider.notifier);
+  return await notifier.fetchDocumentsForProfile(profileId);
+});

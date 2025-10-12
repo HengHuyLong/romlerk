@@ -10,7 +10,8 @@ import 'package:romlerk/ui/widgets/custom_bottom_nav.dart';
 import 'package:romlerk/ui/widgets/custom_drawer.dart';
 import 'package:romlerk/core/providers/documents_provider.dart';
 import 'package:romlerk/core/providers/user_provider.dart';
-import 'package:romlerk/core/providers/navigation_provider.dart'; // ✅ ADDED
+import 'package:romlerk/core/providers/navigation_provider.dart';
+import 'package:romlerk/core/providers/profiles_provider.dart';
 import 'package:romlerk/ui/widgets/national_id_card_widget.dart';
 import 'package:romlerk/ui/screens/documents/document_detail_screen.dart';
 import '../documents/documents_screen.dart';
@@ -22,7 +23,7 @@ class HomeScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final _selectedIndex = ref.watch(navIndexProvider); // ✅ replaced
+    final selectedIndex = ref.watch(navIndexProvider);
     final documentsAsync = ref.watch(documentsProvider);
     final user = ref.watch(userProvider);
     final username = (user?.name?.isNotEmpty ?? false) ? user!.name! : "User";
@@ -36,13 +37,12 @@ class HomeScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: AppColors.white,
-      appBar: _selectedIndex == 3 ? null : const CustomAppBar(),
+      appBar: selectedIndex == 3 ? null : const CustomAppBar(),
       endDrawer: const CustomDrawer(),
-      body: pages[_selectedIndex],
+      body: pages[selectedIndex],
       bottomNavigationBar: CustomBottomNav(
-        currentIndex: _selectedIndex,
-        onTap: (index) =>
-            ref.read(navIndexProvider.notifier).state = index, // ✅ updated
+        currentIndex: selectedIndex,
+        onTap: (index) => ref.read(navIndexProvider.notifier).state = index,
       ),
     );
   }
@@ -60,6 +60,7 @@ class _HomeContent extends ConsumerStatefulWidget {
 
 class _HomeContentState extends ConsumerState<_HomeContent> {
   String selectedCategory = "All";
+  bool _isRefreshing = false;
 
   final List<Map<String, dynamic>> categories = [
     {"label": "All", "icon": Icons.folder_open},
@@ -68,19 +69,42 @@ class _HomeContentState extends ConsumerState<_HomeContent> {
     {"label": "License", "icon": Icons.directions_car_outlined},
   ];
 
+  // ✅ Updated refresh logic with a temporary "Refreshing..." state
   Future<void> _refreshDocuments() async {
-    await ref.read(documentsProvider.notifier).refresh();
+    if (mounted) setState(() => _isRefreshing = true);
+    try {
+      // 1️⃣ Force refresh profiles
+      await ref.read(profilesProvider.notifier).fetchProfiles();
+
+      // 2️⃣ Invalidate all document providers
+      ref.invalidate(documentsProvider);
+      ref.invalidate(documentsProviderForProfile('main'));
+
+      // 3️⃣ Refetch sub-profile documents
+      final profiles = ref.read(profilesProvider).maybeWhen(
+            data: (list) => list,
+            orElse: () => const [],
+          );
+
+      for (final p in profiles) {
+        ref.invalidate(documentsProviderForProfile(p.id));
+        await ref.read(documentsProviderForProfile(p.id).future);
+      }
+    } catch (e) {
+      debugPrint("❌ Error refreshing documents: $e");
+    } finally {
+      if (mounted) setState(() => _isRefreshing = false);
+    }
   }
 
-  // ✅ Instead of setState, tell provider to change to Scan tab
   void _navigateToScan(BuildContext context) {
     ref.read(navIndexProvider.notifier).state = 2;
   }
 
   @override
   Widget build(BuildContext context) {
-    final documentsAsync = widget.documentsAsync;
     final username = widget.username;
+    final profilesAsync = ref.watch(profilesProvider);
 
     return SafeArea(
       child: Padding(
@@ -98,180 +122,222 @@ class _HomeContentState extends ConsumerState<_HomeContent> {
                 color: AppColors.green,
                 backgroundColor: AppColors.white,
                 strokeWidth: 2.5,
-                child: documentsAsync.when(
-                  data: (documents) {
-                    final filteredDocs = selectedCategory == "All"
-                        ? documents
-                        : documents.where((doc) {
-                            if (selectedCategory == "National ID" &&
-                                doc is NationalId) {
-                              return true;
+                child: _isRefreshing
+                    ? _buildRefreshingView() // ✅ show temporary loader
+                    : profilesAsync.when(
+                        data: (profiles) {
+                          Future.microtask(() {
+                            for (final p in profiles) {
+                              ref.read(documentsProviderForProfile(p.id));
                             }
-                            return doc.runtimeType
-                                .toString()
-                                .toLowerCase()
-                                .contains(selectedCategory
-                                    .toLowerCase()
-                                    .replaceAll(" ", "_"));
-                          }).toList();
+                          });
 
-                    final profiles = [username, "Dad", "Mom"];
+                          final allProfiles = [
+                            {"id": "main", "name": username, "isMain": true},
+                            ...profiles.map((p) => {
+                                  "id": p.id,
+                                  "name": p.name,
+                                  "isMain": false,
+                                }),
+                          ];
 
-                    if (filteredDocs.isEmpty) {
-                      return ListView(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        children: [
-                          SizedBox(
-                            height: MediaQuery.of(context).size.height * 0.65,
-                            child: _emptyState(context),
-                          ),
-                        ],
-                      );
-                    }
+                          bool hasAnyDocument = false;
 
-                    return ListView.builder(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      itemCount: profiles.length + 1, // +1 for add more button
-                      itemBuilder: (context, index) {
-                        if (index == profiles.length) {
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            child: _buildAddMoreButton(context),
-                          );
-                        }
+                          final profileWidgets = allProfiles.map((profile) {
+                            final profileId = profile["id"] as String;
+                            final profileName = profile["name"] as String;
+                            final isMain = profile["isMain"] as bool;
+                            final docsForProfileAsync = ref
+                                .watch(documentsProviderForProfile(profileId));
 
-                        final profile = profiles[index];
-                        final docsForProfile = filteredDocs;
-                        if (docsForProfile.isEmpty) {
-                          return const SizedBox.shrink();
-                        }
+                            if (docsForProfileAsync.isLoading) {
+                              return const SizedBox.shrink();
+                            }
 
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Padding(
+                            if (docsForProfileAsync.hasError) {
+                              return Padding(
                                 padding:
-                                    const EdgeInsets.only(left: 6, bottom: 6),
+                                    const EdgeInsets.symmetric(vertical: 12),
                                 child: Text(
-                                  "$profile Documents",
-                                  style: AppTypography.bodyBold.copyWith(
-                                    color: AppColors.darkGray,
-                                    fontSize: 16,
-                                  ),
+                                  "Failed to load $profileName's documents",
+                                  style: AppTypography.body
+                                      .copyWith(color: Colors.red),
                                 ),
-                              ),
-                              Column(
-                                children: docsForProfile.map((doc) {
-                                  if (doc is NationalId) {
-                                    return Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Material(
-                                          color: Colors.white,
-                                          borderRadius:
-                                              BorderRadius.circular(14),
-                                          elevation: 2,
-                                          clipBehavior: Clip.antiAlias,
-                                          child: InkWell(
-                                            borderRadius:
-                                                BorderRadius.circular(14),
-                                            splashColor: AppColors.green
-                                                .withValues(alpha: 0.25),
-                                            highlightColor: AppColors.green
-                                                .withValues(alpha: 0.1),
-                                            onTap: () async {
-                                              await Future.delayed(
-                                                  const Duration(
-                                                      milliseconds: 100));
-                                              if (context.mounted) {
-                                                Navigator.push(
-                                                  context,
-                                                  MaterialPageRoute(
-                                                    builder: (_) =>
-                                                        DocumentDetailScreen(
-                                                      document: doc,
+                              );
+                            }
+
+                            final docs = docsForProfileAsync.value ?? [];
+                            final filteredDocs = selectedCategory == "All"
+                                ? docs
+                                : docs.where((doc) {
+                                    if (selectedCategory == "National ID" &&
+                                        doc is NationalId) return true;
+                                    return doc.runtimeType
+                                        .toString()
+                                        .toLowerCase()
+                                        .contains(selectedCategory
+                                            .toLowerCase()
+                                            .replaceAll(" ", "_"));
+                                  }).toList();
+
+                            if (filteredDocs.isEmpty)
+                              return const SizedBox.shrink();
+
+                            hasAnyDocument = true;
+
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.only(
+                                        left: 6, bottom: 6),
+                                    child: Text(
+                                      isMain
+                                          ? "My Documents"
+                                          : "$profileName's Documents",
+                                      style: AppTypography.bodyBold.copyWith(
+                                        color: AppColors.darkGray,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                  ),
+                                  Column(
+                                    children: filteredDocs.map((doc) {
+                                      if (doc is NationalId) {
+                                        return Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Material(
+                                              color: Colors.white,
+                                              borderRadius:
+                                                  BorderRadius.circular(14),
+                                              elevation: 2,
+                                              clipBehavior: Clip.antiAlias,
+                                              child: InkWell(
+                                                borderRadius:
+                                                    BorderRadius.circular(14),
+                                                splashColor: AppColors.green
+                                                    .withValues(alpha: 0.25),
+                                                highlightColor: AppColors.green
+                                                    .withValues(alpha: 0.1),
+                                                onTap: () async {
+                                                  await Future.delayed(
+                                                      const Duration(
+                                                          milliseconds: 100));
+                                                  if (!mounted) return;
+                                                  Navigator.push(
+                                                    context,
+                                                    MaterialPageRoute(
+                                                      builder: (_) =>
+                                                          DocumentDetailScreen(
+                                                              document: doc),
+                                                    ),
+                                                  );
+                                                },
+                                                child: Padding(
+                                                  padding:
+                                                      const EdgeInsets.all(8.0),
+                                                  child: FittedBox(
+                                                    alignment:
+                                                        Alignment.topCenter,
+                                                    fit: BoxFit.scaleDown,
+                                                    child: ConstrainedBox(
+                                                      constraints:
+                                                          const BoxConstraints(
+                                                        maxWidth: 390,
+                                                        maxHeight: 300,
+                                                      ),
+                                                      child:
+                                                          NationalIdCardWidget(
+                                                              id: doc),
                                                     ),
                                                   ),
-                                                );
-                                              }
-                                            },
-                                            child: Padding(
-                                              padding:
-                                                  const EdgeInsets.all(8.0),
-                                              child: FittedBox(
-                                                alignment: Alignment.topCenter,
-                                                fit: BoxFit.scaleDown,
-                                                child: ConstrainedBox(
-                                                  constraints:
-                                                      const BoxConstraints(
-                                                    maxWidth: 390,
-                                                    maxHeight: 300,
-                                                  ),
-                                                  child: NationalIdCardWidget(
-                                                      id: doc),
                                                 ),
                                               ),
                                             ),
-                                          ),
-                                        ),
-                                        Padding(
-                                          padding: const EdgeInsets.only(
-                                              left: 8, top: 6, bottom: 12),
-                                          child: Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.spaceBetween,
-                                            children: [
-                                              Text(
-                                                "National ID",
-                                                style:
-                                                    AppTypography.body.copyWith(
-                                                  fontWeight: FontWeight.w600,
-                                                  color: AppColors.darkGray,
-                                                  fontSize: 13,
-                                                ),
+                                            Padding(
+                                              padding: const EdgeInsets.only(
+                                                  left: 8, top: 6, bottom: 12),
+                                              child: Row(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment
+                                                        .spaceBetween,
+                                                children: [
+                                                  Text(
+                                                    "National ID",
+                                                    style: AppTypography.body
+                                                        .copyWith(
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      color: AppColors.darkGray,
+                                                      fontSize: 13,
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    doc.expiryDate != null &&
+                                                            doc.expiryDate!
+                                                                .isNotEmpty
+                                                        ? "Expires: ${doc.expiryDate}"
+                                                        : "No expiry",
+                                                    style: AppTypography.body
+                                                        .copyWith(
+                                                      color: AppColors.green,
+                                                      fontSize: 12,
+                                                      fontWeight:
+                                                          FontWeight.w500,
+                                                    ),
+                                                  ),
+                                                ],
                                               ),
-                                              Text(
-                                                doc.expiryDate != null &&
-                                                        doc.expiryDate!
-                                                            .isNotEmpty
-                                                    ? "Expires: ${doc.expiryDate}"
-                                                    : "No expiry",
-                                                style:
-                                                    AppTypography.body.copyWith(
-                                                  color: AppColors.green,
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.w500,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                    );
-                                  }
-                                  return const SizedBox.shrink();
-                                }).toList(),
+                                            ),
+                                          ],
+                                        );
+                                      }
+                                      return const SizedBox.shrink();
+                                    }).toList(),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList();
+
+                          if (!hasAnyDocument) {
+                            return ListView(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              children: [
+                                SizedBox(
+                                  height:
+                                      MediaQuery.of(context).size.height * 0.65,
+                                  child: _emptyState(context),
+                                ),
+                              ],
+                            );
+                          }
+
+                          return ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            children: [
+                              ...profileWidgets,
+                              Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 16),
+                                child: _buildAddMoreButton(context),
                               ),
                             ],
+                          );
+                        },
+                        loading: () => _buildRefreshingView(),
+                        error: (err, _) => Center(
+                          child: Text(
+                            "Failed to load profiles",
+                            style:
+                                AppTypography.body.copyWith(color: Colors.red),
                           ),
-                        );
-                      },
-                    );
-                  },
-                  loading: () => Center(
-                    child: CircularProgressIndicator(color: AppColors.darkGray),
-                  ),
-                  error: (e, _) => Center(
-                    child: Text(
-                      "Failed to load documents",
-                      style: AppTypography.body
-                          .copyWith(color: AppColors.darkGray),
-                    ),
-                  ),
-                ),
+                        ),
+                      ),
               ),
             ),
           ],
@@ -280,49 +346,32 @@ class _HomeContentState extends ConsumerState<_HomeContent> {
     );
   }
 
-  Widget _buildAddMoreButton(BuildContext context) {
-    return Center(
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(14),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(14),
-          splashColor: AppColors.green.withValues(alpha: 0.25),
-          highlightColor: AppColors.green.withValues(alpha: 0.1),
-          onTap: () async {
-            await Future.delayed(const Duration(milliseconds: 150));
-            _navigateToScan(context);
-          },
-          child: Container(
-            height: 110,
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: AppColors.darkGray.withAlpha(20),
-              borderRadius: BorderRadius.circular(14),
-            ),
+  // ✅ Simple refreshing loader widget
+  Widget _buildRefreshingView() {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [
+        SizedBox(
+          height: MediaQuery.of(context).size.height * 0.65,
+          child: Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(
-                  Icons.add_circle_outline,
-                  size: 36,
-                  color: AppColors.green.withAlpha(150),
-                ),
-                const SizedBox(height: 8),
+                CircularProgressIndicator(color: AppColors.green),
+                const SizedBox(height: 12),
                 Text(
-                  "Add More Document",
+                  "Refreshing documents...",
                   style: AppTypography.body.copyWith(
+                    color: AppColors.darkGray,
                     fontSize: 13,
-                    color: AppColors.green.withAlpha(180),
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ],
             ),
           ),
         ),
-      ),
+      ],
     );
   }
 
@@ -350,25 +399,56 @@ class _HomeContentState extends ConsumerState<_HomeContent> {
             ),
           ),
           const SizedBox(height: 18),
-          GestureDetector(
-            onTap: () => _navigateToScan(context),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              decoration: BoxDecoration(
-                color: AppColors.green,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                "Add Document",
-                style: AppTypography.body.copyWith(
-                  color: AppColors.white,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                ),
-              ),
-            ),
+          _AnimatedAddDocumentButton(
+            onPressed: () {
+              ref.read(navIndexProvider.notifier).state = 2;
+            },
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAddMoreButton(BuildContext context) {
+    return Center(
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(14),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          splashColor: AppColors.green.withValues(alpha: 0.25),
+          highlightColor: AppColors.green.withValues(alpha: 0.1),
+          onTap: () async {
+            await Future.delayed(const Duration(milliseconds: 150));
+            if (!mounted) return;
+            ref.read(navIndexProvider.notifier).state = 2;
+          },
+          child: Container(
+            height: 110,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: AppColors.darkGray.withAlpha(20),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.add_circle_outline,
+                    size: 36, color: AppColors.green.withAlpha(150)),
+                const SizedBox(height: 8),
+                Text(
+                  "Add More Document",
+                  style: AppTypography.body.copyWith(
+                    fontSize: 13,
+                    color: AppColors.green.withAlpha(180),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -434,6 +514,62 @@ class _HomeContentState extends ConsumerState<_HomeContent> {
   }
 }
 
+class _AnimatedAddDocumentButton extends StatefulWidget {
+  final VoidCallback onPressed;
+  const _AnimatedAddDocumentButton({required this.onPressed});
+
+  @override
+  State<_AnimatedAddDocumentButton> createState() =>
+      _AnimatedAddDocumentButtonState();
+}
+
+class _AnimatedAddDocumentButtonState
+    extends State<_AnimatedAddDocumentButton> {
+  double _scale = 1.0;
+
+  void _onTapDown(_) => setState(() => _scale = 0.93);
+  void _onTapUp(_) {
+    setState(() => _scale = 1.0);
+    Future.delayed(const Duration(milliseconds: 120), widget.onPressed);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedScale(
+      scale: _scale,
+      duration: const Duration(milliseconds: 120),
+      curve: Curves.easeOut,
+      child: GestureDetector(
+        onTapDown: _onTapDown,
+        onTapUp: _onTapUp,
+        onTapCancel: () => setState(() => _scale = 1.0),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          decoration: BoxDecoration(
+            color: AppColors.green,
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.green.withAlpha(60),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              )
+            ],
+          ),
+          child: Text(
+            "Add Document",
+            style: AppTypography.body.copyWith(
+              color: AppColors.white,
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _CategoryTab extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -487,7 +623,7 @@ class _CategoryTab extends StatelessWidget {
             AnimatedContainer(
               duration: const Duration(milliseconds: 250),
               curve: Curves.easeInOut,
-              height: 2,
+              height: 3,
               width: selected ? 24 : 0,
               decoration: BoxDecoration(
                 color: AppColors.green,

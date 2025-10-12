@@ -27,7 +27,13 @@ abstract class BaseDocument {
   /// Optional Firestore document ID.
   final String? id;
 
-  const BaseDocument({this.id});
+  /// Optional profile ID for sub-profile documents (e.g. Dad, Mom, etc.)
+  final String? profileId; // ✅ Added field
+
+  const BaseDocument({
+    this.id,
+    this.profileId, // ✅ Added to constructor
+  });
 
   /// Returns the list of editable fields for the document.
   List<DocumentField> toFields();
@@ -36,5 +42,17 @@ abstract class BaseDocument {
   BaseDocument copyWithFields(Map<String, String> updatedFields);
 
   /// Converts this document to a JSON-serializable map for backend or local storage.
-  Map<String, dynamic> toJson();
+  Map<String, dynamic> toJson() {
+    final data = <String, dynamic>{};
+
+    if (id != null) {
+      data['id'] = id;
+    }
+
+    if (profileId != null) {
+      data['profileId'] = profileId; // ✅ now enclosed in block
+    }
+
+    return data;
+  }
 }

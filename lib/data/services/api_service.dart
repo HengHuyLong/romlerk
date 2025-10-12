@@ -288,12 +288,18 @@ class ApiService {
   }
 
   // =======================================================================
-  // ✅ FETCH DOCUMENTS
-  // =======================================================================
+// ✅ FETCH DOCUMENTS
+// =======================================================================
   static Future<List<Map<String, dynamic>>?> fetchDocuments({
     required String idToken,
+    String? profileId, // 🔹 optional filter for profile-specific docs
   }) async {
-    final uri = Uri.parse('$_baseUrl/documents');
+    // ✅ Updated URL: supports ?profileId=XYZ filter cleanly
+    final uri = Uri.parse(
+      profileId != null && profileId.isNotEmpty
+          ? '$_baseUrl/documents?profileId=$profileId'
+          : '$_baseUrl/documents',
+    );
 
     try {
       debugPrint('📤 Fetching documents from: $uri');
@@ -307,9 +313,11 @@ class ApiService {
       ).timeout(const Duration(seconds: 10));
 
       debugPrint('📥 Response status: ${response.statusCode}');
+      debugPrint('📥 Response body: ${response.body}');
 
       if (response.statusCode == 200) {
         final rawList = jsonDecode(response.body);
+
         if (rawList is! List) {
           debugPrint('⚠️ Unexpected response type for documents');
           return null;
@@ -317,19 +325,14 @@ class ApiService {
 
         debugPrint('✅ Documents fetched: ${rawList.length}');
 
+        // ✅ Normalize to consistent structure
         final normalized = rawList.map<Map<String, dynamic>>((doc) {
           if (doc is Map<String, dynamic>) {
             final id = doc['id'] ?? doc['_id'] ?? doc['docId'];
-            if (doc['data'] is Map<String, dynamic>) {
-              return {
-                'id': id?.toString(),
-                ...Map<String, dynamic>.from(doc['data'])
-              };
-            }
-            return {
-              'id': id?.toString(),
-              ...Map<String, dynamic>.from(doc),
-            };
+            final data = (doc['data'] is Map<String, dynamic>)
+                ? Map<String, dynamic>.from(doc['data'])
+                : Map<String, dynamic>.from(doc);
+            return {'id': id?.toString(), ...data};
           }
           return <String, dynamic>{};
         }).toList();
@@ -350,6 +353,111 @@ class ApiService {
       return null;
     } catch (e) {
       debugPrint('🔥 Unexpected error while fetching documents: $e');
+      return null;
+    }
+  }
+
+  // =======================================================================
+  // ✅ FETCH PROFILES
+  // =======================================================================
+  static Future<List<Map<String, dynamic>>?> getProfiles({
+    required String idToken,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/profiles');
+
+    try {
+      debugPrint('📤 Fetching profiles from: $uri');
+
+      final response = await _client.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $idToken',
+          'Accept': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 8));
+
+      debugPrint('📥 Response status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final rawList = jsonDecode(response.body);
+        if (rawList is! List) {
+          debugPrint('⚠️ Unexpected response type for profiles');
+          return null;
+        }
+
+        debugPrint('✅ Profiles fetched: ${rawList.length}');
+        return rawList.map<Map<String, dynamic>>((p) {
+          if (p is Map<String, dynamic>) return Map<String, dynamic>.from(p);
+          return <String, dynamic>{};
+        }).toList();
+      } else {
+        debugPrint('❌ Failed to fetch profiles: ${response.body}');
+        return null;
+      }
+    } on SocketException {
+      debugPrint('❌ Network error while fetching profiles');
+      return null;
+    } on TimeoutException {
+      debugPrint('⏰ Timeout while fetching profiles');
+      return null;
+    } on IOException {
+      debugPrint('⚠️ I/O error while fetching profiles');
+      return null;
+    } catch (e) {
+      debugPrint('🔥 Unexpected error while fetching profiles: $e');
+      return null;
+    }
+  }
+
+  // =======================================================================
+  // ✅ CREATE PROFILE
+  // =======================================================================
+  static Future<Map<String, dynamic>?> createProfile({
+    required String idToken,
+    required String name,
+    required String type,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/profiles');
+
+    try {
+      debugPrint('📤 Creating profile: $name ($type)');
+
+      final response = await _client
+          .post(
+            uri,
+            headers: {
+              'Authorization': 'Bearer $idToken',
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode({'name': name, 'type': type}),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      debugPrint('📥 Response status: ${response.statusCode}');
+      debugPrint('📥 Response body: ${response.body}');
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final raw = jsonDecode(response.body);
+        if (raw is Map) {
+          debugPrint('✅ Profile created: $raw');
+          return Map<String, dynamic>.from(raw);
+        }
+      } else {
+        debugPrint('❌ Failed to create profile: ${response.body}');
+      }
+      return null;
+    } on SocketException {
+      debugPrint('❌ Network error while creating profile');
+      return null;
+    } on TimeoutException {
+      debugPrint('⏰ Timeout while creating profile');
+      return null;
+    } on IOException {
+      debugPrint('⚠️ I/O error while creating profile');
+      return null;
+    } catch (e) {
+      debugPrint('🔥 Unexpected error while creating profile: $e');
       return null;
     }
   }
