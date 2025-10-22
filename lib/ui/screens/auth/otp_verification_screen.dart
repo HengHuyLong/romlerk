@@ -10,6 +10,7 @@ import '../../../core/theme/app_typography.dart';
 import 'package:romlerk/data/services/auth_service.dart';
 import 'package:romlerk/data/repositories/user_repository.dart';
 import '../../../core/providers/user_provider.dart';
+import 'package:romlerk/core/providers/navigation_provider.dart';
 
 // Note: This screen now depends on a UserRepository. Ensure you have a provider for it.
 // e.g., final userRepositoryProvider = Provider((ref) => UserRepository());
@@ -94,7 +95,8 @@ class _OtpVerificationScreenState extends ConsumerState<OtpVerificationScreen> {
         setState(() => _errorText = "Server unreachable. Try again later.");
         return;
       }
-
+      // ✅ Reset bottom nav to home
+      ref.read(navIndexProvider.notifier).state = 0;
       // Update global user state
       ref.read(userProvider.notifier).setUser(result.user);
 

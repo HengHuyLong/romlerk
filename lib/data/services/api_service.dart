@@ -6,11 +6,8 @@ import 'package:http/http.dart' as http;
 
 /// 🔹 Centralized API service for Romlerk backend communication.
 class ApiService {
-  // 🌐 Use --dart-define=API_BASE_URL=https://api.romlerk.com for production.
-  static const String _baseUrl = String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: 'http://10.0.2.2:8080', // Localhost for Android emulator
-  );
+  // 🌐 Hosted production backend on Render
+  static const String _baseUrl = 'https://romlerk-backend.onrender.com';
 
   // ✅ Persistent HTTP client
   static final http.Client _client = http.Client();
@@ -288,13 +285,12 @@ class ApiService {
   }
 
   // =======================================================================
-// ✅ FETCH DOCUMENTS
-// =======================================================================
+  // ✅ FETCH DOCUMENTS
+  // =======================================================================
   static Future<List<Map<String, dynamic>>?> fetchDocuments({
     required String idToken,
-    String? profileId, // 🔹 optional filter for profile-specific docs
+    String? profileId,
   }) async {
-    // ✅ Updated URL: supports ?profileId=XYZ filter cleanly
     final uri = Uri.parse(
       profileId != null && profileId.isNotEmpty
           ? '$_baseUrl/documents?profileId=$profileId'
@@ -325,7 +321,6 @@ class ApiService {
 
         debugPrint('✅ Documents fetched: ${rawList.length}');
 
-        // ✅ Normalize to consistent structure
         final normalized = rawList.map<Map<String, dynamic>>((doc) {
           if (doc is Map<String, dynamic>) {
             final id = doc['id'] ?? doc['_id'] ?? doc['docId'];
@@ -458,6 +453,61 @@ class ApiService {
       return null;
     } catch (e) {
       debugPrint('🔥 Unexpected error while creating profile: $e');
+      return null;
+    }
+  }
+
+  // =======================================================================
+  // ✅ UPDATE PROFILE
+  // =======================================================================
+  static Future<Map<String, dynamic>?> updateProfile({
+    required String idToken,
+    required String profileId,
+    required String name,
+    required String type,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/profiles/$profileId');
+
+    try {
+      debugPrint('📤 Updating profile: $name ($type) [id=$profileId]');
+
+      final response = await _client
+          .patch(
+            uri,
+            headers: {
+              'Authorization': 'Bearer $idToken',
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode({'name': name, 'type': type}),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      debugPrint('📥 Response status: ${response.statusCode}');
+      debugPrint('📥 Response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final raw = jsonDecode(response.body);
+        if (raw is Map) {
+          debugPrint('✅ Profile updated successfully: $raw');
+          return Map<String, dynamic>.from(raw);
+        }
+      } else {
+        debugPrint('❌ Failed to update profile: ${response.body}');
+      }
+
+      return null;
+    } on SocketException {
+      debugPrint('❌ Network error while updating profile');
+      return null;
+    } on TimeoutException {
+      debugPrint('⏰ Timeout while updating profile');
+      return null;
+    } on IOException {
+      debugPrint('⚠️ I/O error while updating profile');
+      return null;
+    } catch (e) {
+      debugPrint('🔥 Unexpected error while updating profile: $e');
       return null;
     }
   }

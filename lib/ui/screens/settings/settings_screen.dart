@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart'; // ✅ added for logout
+import 'package:romlerk/ui/screens/settings/about_app.dart';
+import 'package:romlerk/ui/screens/settings/faq_screen.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../widgets/app_background.dart';
@@ -81,13 +83,23 @@ class SettingsScreen extends ConsumerWidget {
                 context: context,
                 icon: Icons.help_outline,
                 label: "FAQ",
-                onTap: () {},
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const FaqScreen()),
+                  );
+                },
               ),
               _buildSettingItem(
                 context: context,
                 icon: Icons.info_outline,
                 label: "About app",
-                onTap: () {},
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const AboutAppScreen()),
+                  );
+                },
               ),
 
               const Spacer(),

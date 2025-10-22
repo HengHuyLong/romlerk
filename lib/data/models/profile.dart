@@ -1,5 +1,3 @@
-// lib/data/models/profile.dart
-
 class Profile {
   final String id;
   final String name;
@@ -29,4 +27,19 @@ class Profile {
         'type': type,
         'createdAt': createdAt.toIso8601String(),
       };
+
+  /// ✅ Safe helper for editing local state only (doesn't affect backend logic)
+  Profile copyWith({
+    String? id,
+    String? name,
+    String? type,
+    DateTime? createdAt,
+  }) {
+    return Profile(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      type: type ?? this.type,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
 }

@@ -44,6 +44,7 @@ class _CreateProfileScreenState extends ConsumerState<CreateProfileScreen> {
           );
       if (mounted) Navigator.pop(context);
     } catch (e) {
+      // ignore: use_build_context_synchronously
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Failed to create profile: $e")),
       );
@@ -61,7 +62,7 @@ class _CreateProfileScreenState extends ConsumerState<CreateProfileScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: Text("Create Profile", style: AppTypography.bodyBold),
+        title: const Text("Create Profile", style: AppTypography.bodyBold),
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(

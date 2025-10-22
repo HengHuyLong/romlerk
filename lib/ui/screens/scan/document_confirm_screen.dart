@@ -181,9 +181,9 @@ class _DocumentConfirmScreenState extends ConsumerState<DocumentConfirmScreen> {
             const SizedBox(height: 8),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(4, (index) {
+              children: List.generate(3, (index) {
                 final stepNumber = index + 1;
-                final isActive = stepNumber == 4;
+                final isActive = stepNumber == 3;
                 return Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: Column(

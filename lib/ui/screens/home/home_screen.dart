@@ -97,10 +97,6 @@ class _HomeContentState extends ConsumerState<_HomeContent> {
     }
   }
 
-  void _navigateToScan(BuildContext context) {
-    ref.read(navIndexProvider.notifier).state = 2;
-  }
-
   @override
   Widget build(BuildContext context) {
     final username = widget.username;
@@ -171,7 +167,9 @@ class _HomeContentState extends ConsumerState<_HomeContent> {
                                 ? docs
                                 : docs.where((doc) {
                                     if (selectedCategory == "National ID" &&
-                                        doc is NationalId) return true;
+                                        doc is NationalId) {
+                                      return true;
+                                    }
                                     return doc.runtimeType
                                         .toString()
                                         .toLowerCase()
@@ -180,8 +178,9 @@ class _HomeContentState extends ConsumerState<_HomeContent> {
                                             .replaceAll(" ", "_"));
                                   }).toList();
 
-                            if (filteredDocs.isEmpty)
+                            if (filteredDocs.isEmpty) {
                               return const SizedBox.shrink();
+                            }
 
                             hasAnyDocument = true;
 
@@ -229,6 +228,7 @@ class _HomeContentState extends ConsumerState<_HomeContent> {
                                                           milliseconds: 100));
                                                   if (!mounted) return;
                                                   Navigator.push(
+                                                    // ignore: use_build_context_synchronously
                                                     context,
                                                     MaterialPageRoute(
                                                       builder: (_) =>
@@ -331,10 +331,49 @@ class _HomeContentState extends ConsumerState<_HomeContent> {
                         },
                         loading: () => _buildRefreshingView(),
                         error: (err, _) => Center(
-                          child: Text(
-                            "Failed to load profiles",
-                            style:
-                                AppTypography.body.copyWith(color: Colors.red),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.error_outline,
+                                  color: Colors.redAccent, size: 48),
+                              const SizedBox(height: 12),
+                              Text(
+                                "Failed to load profiles",
+                                style: AppTypography.body.copyWith(
+                                  color: Colors.red,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                "Please check your connection or try again.",
+                                style: AppTypography.body.copyWith(
+                                  color: AppColors.darkGray,
+                                  fontSize: 13,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 16),
+                              ElevatedButton.icon(
+                                onPressed: _refreshDocuments,
+                                icon: const Icon(Icons.refresh,
+                                    size: 18, color: Colors.white),
+                                label: const Text(
+                                  "Retry",
+                                  style: TextStyle(
+                                      color: Colors.white, fontSize: 14),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.green,
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 20, vertical: 10),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),

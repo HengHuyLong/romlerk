@@ -78,6 +78,40 @@ class ProfilesNotifier extends StateNotifier<AsyncValue<List<Profile>>> {
       print("🔥 Error creating profile: $e");
     }
   }
+
+  /// 🔹 Update existing profile (edit name, type, avatar)
+  Future<void> updateProfile(Profile updatedProfile) async {
+    try {
+      final idToken = await _getIdToken();
+      if (idToken == null) return;
+
+      final result = await ApiService.updateProfile(
+        idToken: idToken,
+        profileId: updatedProfile.id,
+        name: updatedProfile.name,
+        type: updatedProfile.type,
+      );
+
+      if (result != null) {
+        final current = state.value ?? [];
+        final index = current.indexWhere((p) => p.id == updatedProfile.id);
+        if (index != -1) {
+          final updatedList = [...current];
+          updatedList[index] = updatedProfile;
+          state = AsyncData(updatedList);
+        }
+        // ignore: avoid_print
+        print("✅ Profile updated: ${updatedProfile.name}");
+      } else {
+        // ignore: avoid_print
+        print("❌ Failed to update profile (no result)");
+      }
+    } catch (e, st) {
+      state = AsyncError(e, st);
+      // ignore: avoid_print
+      print("🔥 Error updating profile: $e");
+    }
+  }
 }
 
 /// 🔹 Currently selected profile (for document creation or filtering)

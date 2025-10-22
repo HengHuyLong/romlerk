@@ -6,10 +6,13 @@ import 'package:romlerk/core/providers/documents_provider.dart';
 import 'package:romlerk/core/providers/user_provider.dart';
 import 'package:romlerk/core/providers/navigation_provider.dart';
 import 'package:romlerk/core/providers/profiles_provider.dart';
+import 'package:romlerk/core/providers/slot_provider.dart';
 import 'package:romlerk/core/theme/app_colors.dart';
 import 'package:romlerk/core/theme/app_typography.dart';
 import 'package:romlerk/ui/screens/documents/document_detail_screen.dart';
 import 'package:romlerk/ui/screens/documents/profiles/create_profile_screen.dart';
+import 'package:romlerk/ui/screens/documents/profiles/profile_edit_screen.dart';
+import 'package:romlerk/ui/screens/payment/payment_screen.dart';
 
 class DocumentsScreen extends ConsumerStatefulWidget {
   const DocumentsScreen({super.key});
@@ -63,20 +66,35 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen>
     ref.read(navIndexProvider.notifier).state = 2; // 2 = Scan tab
   }
 
+  // ✅ Count all documents across all profiles (live)
+  int _calculateTotalDocs() {
+    final mainDocs = ref.watch(documentsProvider).value ?? [];
+    final profiles = ref.watch(profilesProvider).value ?? [];
+
+    int totalDocs = mainDocs.length;
+    for (final profile in profiles) {
+      final profileDocs =
+          ref.watch(documentsProviderForProfile(profile.id)).value ?? [];
+      totalDocs += profileDocs.length;
+    }
+    return totalDocs;
+  }
+
   @override
   Widget build(BuildContext context) {
     final documentsState = ref.watch(documentsProvider);
     final profilesState = ref.watch(profilesProvider);
     final user = ref.watch(userProvider);
+    final slotData = ref.watch(slotProvider);
+    final maxSlots = slotData['maxSlots'] ?? 3;
+    final totalDocs = _calculateTotalDocs();
 
     return SafeArea(
       child: RefreshIndicator(
         onRefresh: () async {
-          // ✅ Refresh both main and sub profiles
           await ref.read(documentsProvider.notifier).refresh();
           await ref.read(profilesProvider.notifier).fetchProfiles();
 
-          // ✅ Refresh all sub-profile document caches properly
           final profiles = ref.read(profilesProvider).value ?? [];
           for (final p in profiles) {
             ref.invalidate(documentsProviderForProfile(p.id));
@@ -88,35 +106,91 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const CreateProfileScreen()),
-                  );
-                },
-                style: OutlinedButton.styleFrom(
-                  side: BorderSide(
-                    color: AppColors.darkGray.withValues(alpha: 0.3),
+              // 🟩 Create Profile + Slot Counter Row
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const CreateProfileScreen()),
+                      );
+                    },
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(
+                        color: AppColors.darkGray.withValues(alpha: 0.3),
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 10),
+                    ),
+                    icon: const Icon(Icons.person_add_alt_1_outlined,
+                        size: 18, color: AppColors.green),
+                    label: Text(
+                      "Create Profile",
+                      style: AppTypography.body.copyWith(
+                        fontSize: 13,
+                        color: AppColors.green,
+                      ),
+                    ),
                   ),
-                  shape: RoundedRectangleBorder(
+
+                  // 🗂️ Dynamic Slot Counter Box (tappable with ripple -> Payment)
+                  Material(
+                    color: AppColors.white,
                     borderRadius: BorderRadius.circular(10),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const PaymentScreen()),
+                        );
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color: AppColors.darkGray.withValues(alpha: 0.3),
+                          ),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.folder_open_rounded,
+                              size: 18,
+                              color: AppColors.green,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              "$totalDocs/$maxSlots",
+                              style: AppTypography.body.copyWith(
+                                fontSize: 13,
+                                color: totalDocs >= maxSlots
+                                    ? Colors.red
+                                    : AppColors.green,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                ),
-                icon: const Icon(Icons.person_add_alt_1_outlined,
-                    size: 18, color: AppColors.green),
-                label: Text(
-                  "Create Profile",
-                  style: AppTypography.body.copyWith(
-                    fontSize: 13,
-                    color: AppColors.green,
-                  ),
-                ),
+                ],
               ),
+
               const SizedBox(height: 16),
+
+              // 🔍 Search Bar
+
               Container(
                 height: 42,
                 padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -163,12 +237,53 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen>
                 error: (err, _) => Center(
                   child: Padding(
                     padding: const EdgeInsets.all(40),
-                    child: Text(
-                      "Failed to load documents\n$err",
-                      textAlign: TextAlign.center,
-                      style: AppTypography.body.copyWith(
-                        color: AppColors.darkGray,
-                      ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.error_outline,
+                            color: Colors.redAccent, size: 50),
+                        const SizedBox(height: 12),
+                        Text(
+                          "Failed to load documents",
+                          textAlign: TextAlign.center,
+                          style: AppTypography.body.copyWith(
+                            color: Colors.redAccent,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          "Please check your connection or try again.\n$err",
+                          textAlign: TextAlign.center,
+                          style: AppTypography.body.copyWith(
+                            color: AppColors.darkGray,
+                            fontSize: 13,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton.icon(
+                          onPressed: () async {
+                            await ref
+                                .read(documentsProvider.notifier)
+                                .refresh();
+                          },
+                          icon: const Icon(Icons.refresh,
+                              size: 18, color: Colors.white),
+                          label: const Text(
+                            "Retry",
+                            style: TextStyle(color: Colors.white, fontSize: 14),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.green,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 22, vertical: 10),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -217,7 +332,7 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen>
                         sizeFactor: _sizeAnimation,
                         child: FadeTransition(
                           opacity: _sizeAnimation,
-                          child: _buildGrid(allDocs),
+                          child: _buildGrid(allDocs, totalDocs),
                         ),
                       ),
                     ],
@@ -248,9 +363,9 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen>
                       padding: const EdgeInsets.symmetric(vertical: 20),
                       child: Center(
                         child: Text(
-                          "No sub-profiles found",
+                          "Add profile to manage family member's documents",
                           style: AppTypography.body.copyWith(
-                            color: AppColors.darkGray,
+                            color: AppColors.darkGray.withValues(alpha: 0.4),
                           ),
                         ),
                       ),
@@ -320,7 +435,13 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen>
                                   ),
                                   IconButton(
                                     onPressed: () {
-                                      // TODO: navigate to edit profile
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => ProfileEditScreen(
+                                              profile: profile),
+                                        ),
+                                      );
                                     },
                                     icon: const Icon(
                                       Icons.edit_outlined,
@@ -352,17 +473,55 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen>
                                 padding: EdgeInsets.all(20),
                                 child: Center(
                                   child: CircularProgressIndicator(
-                                    color: AppColors.green,
-                                  ),
+                                      color: AppColors.green),
                                 ),
                               ),
                               error: (err, _) => Padding(
                                 padding: const EdgeInsets.all(20),
-                                child: Text(
-                                  "Failed to load ${profile.name}'s documents",
-                                  style: AppTypography.body.copyWith(
-                                    color: Colors.red,
-                                  ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.error_outline,
+                                        color: Colors.redAccent, size: 40),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      "Failed to load ${profile.name}'s documents",
+                                      textAlign: TextAlign.center,
+                                      style: AppTypography.body.copyWith(
+                                        color: Colors.redAccent,
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    ElevatedButton.icon(
+                                      onPressed: () async {
+                                        ref.invalidate(
+                                            documentsProviderForProfile(
+                                                profile.id));
+                                        await ref.read(
+                                            documentsProviderForProfile(
+                                                    profile.id)
+                                                .future);
+                                      },
+                                      icon: const Icon(Icons.refresh,
+                                          size: 18, color: Colors.white),
+                                      label: const Text(
+                                        "Retry",
+                                        style: TextStyle(
+                                            color: Colors.white, fontSize: 13),
+                                      ),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: AppColors.green,
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 18, vertical: 8),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                               data: (docs) {
@@ -370,7 +529,7 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen>
                                 return Padding(
                                   padding:
                                       const EdgeInsets.symmetric(vertical: 10),
-                                  child: _buildGrid(allDocs),
+                                  child: _buildGrid(allDocs, totalDocs),
                                 );
                               },
                             ),
@@ -389,7 +548,7 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen>
     );
   }
 
-  Widget _buildGrid(List allDocs) {
+  Widget _buildGrid(List allDocs, int totalDocs) {
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -403,7 +562,7 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen>
       itemBuilder: (context, index) {
         final item = allDocs[index];
         if (item == "add_more") {
-          return _buildAddMoreCard(context);
+          return _buildAddMoreCard(context, totalDocs);
         } else {
           return _buildDocumentItem(context, item);
         }
@@ -423,20 +582,9 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen>
     String expiryText = "No expiry";
     Color expiryColor = AppColors.darkGray;
 
-    final expiryRaw = doc.toJson()['expiryDate'];
-    if (expiryRaw != null && expiryRaw.toString().isNotEmpty) {
-      try {
-        final expiryDate = DateTime.tryParse(expiryRaw.toString());
-        if (expiryDate != null) {
-          final now = DateTime.now();
-          final isExpired = expiryDate.isBefore(now);
-          expiryColor = isExpired ? Colors.red : AppColors.green;
-          expiryText = DateFormat('dd MMM yyyy').format(expiryDate);
-        }
-      } catch (_) {
-        expiryText = "Invalid date";
-        expiryColor = Colors.red;
-      }
+    if (doc.expiryDate != null && doc.expiryDate!.isNotEmpty) {
+      expiryText = "Expires\n ${doc.expiryDate}";
+      expiryColor = AppColors.green;
     }
 
     final thumbAsset =
@@ -506,14 +654,132 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen>
     );
   }
 
-  Widget _buildAddMoreCard(BuildContext context) {
+  Widget _buildAddMoreCard(BuildContext context, int totalDocs) {
+    final slotData = ref.watch(slotProvider);
+    final maxSlots = slotData['maxSlots'] ?? 3;
+    final bool isFull = totalDocs >= maxSlots;
+
     return Column(
       children: [
         Material(
           color: Colors.transparent,
           borderRadius: BorderRadius.circular(14),
           child: GestureDetector(
-            onTap: () => _navigateToScan(context),
+            onTap: () {
+              if (isFull) {
+                showDialog(
+                  context: context,
+                  barrierDismissible: true,
+                  builder: (_) => Dialog(
+                    backgroundColor: AppColors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 24, vertical: 26),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            height: 60,
+                            width: 60,
+                            decoration: BoxDecoration(
+                              color: AppColors.green.withValues(alpha: 0.1),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.lock_outline,
+                              color: AppColors.green,
+                              size: 32,
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          Text(
+                            "You’ve run out of slots",
+                            textAlign: TextAlign.center,
+                            style: AppTypography.bodyBold.copyWith(
+                              fontSize: 17,
+                              color: AppColors.black,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            "You can only store up to $maxSlots documents.\nBuy more slots or subscribe to the Family Plan to add more.",
+                            textAlign: TextAlign.center,
+                            style: AppTypography.body.copyWith(
+                              fontSize: 13,
+                              color: AppColors.darkGray,
+                              height: 1.4,
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  style: OutlinedButton.styleFrom(
+                                    side: const BorderSide(
+                                        color: AppColors.darkGray),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 12),
+                                  ),
+                                  child: Text(
+                                    "Close",
+                                    style: AppTypography.body.copyWith(
+                                      fontSize: 13,
+                                      color: AppColors.darkGray,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: ElevatedButton(
+                                  onPressed: () {
+                                    Navigator.pop(context);
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                          builder: (_) =>
+                                              const PaymentScreen()),
+                                    );
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.green,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 12),
+                                    elevation: 0,
+                                  ),
+                                  child: Text(
+                                    "View Plans",
+                                    style: AppTypography.body.copyWith(
+                                      fontSize: 13,
+                                      color: AppColors.white,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              } else {
+                _navigateToScan(context);
+              }
+            },
             child: Container(
               decoration: BoxDecoration(
                 color: AppColors.white,
@@ -527,8 +793,12 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen>
                 ],
               ),
               height: 110,
-              child: const Center(
-                child: Icon(Icons.add, size: 36, color: AppColors.green),
+              child: Center(
+                child: Icon(
+                  Icons.add,
+                  size: 36,
+                  color: isFull ? Colors.grey : AppColors.green,
+                ),
               ),
             ),
           ),
@@ -539,7 +809,7 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen>
           textAlign: TextAlign.center,
           style: AppTypography.body.copyWith(
             fontSize: 12,
-            color: AppColors.green,
+            color: isFull ? Colors.grey : AppColors.green,
             fontWeight: FontWeight.w500,
           ),
         ),

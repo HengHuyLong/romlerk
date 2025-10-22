@@ -2,25 +2,32 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:get_storage/get_storage.dart';
+import 'package:romlerk/core/providers/user_provider.dart'; // ✅ add this import
 import 'package:romlerk/ui/screens/splash/simple_splash_screen.dart';
-import 'firebase_options.dart'; // ✅ generated Firebase options
+import 'firebase_options.dart';
 import './core/theme/app_theme.dart';
 import './ui/widgets/app_background.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // ✅ Initialize Firebase with the correct platform options
+  // ✅ Initialize Firebase
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // ✅ Initialize GetStorage (local lightweight key-value storage)
+  // ✅ Initialize GetStorage
   await GetStorage.init();
 
+  // ✅ Preload cached user before the UI starts
+  final container = ProviderContainer();
+  await container.read(userProvider.notifier).loadUserFromCache();
+
+  // ✅ Run app with the preloaded provider scope
   runApp(
-    const ProviderScope(
-      child: RomlerkApp(),
+    UncontrolledProviderScope(
+      container: container,
+      child: const RomlerkApp(),
     ),
   );
 }

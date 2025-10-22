@@ -178,7 +178,7 @@ class _DocumentEditInfoScreenState
     switch (field.type) {
       case FieldType.dropdown:
         return DropdownButtonFormField<String>(
-          value: controller.text.isNotEmpty ? controller.text : null,
+          initialValue: controller.text.isNotEmpty ? controller.text : null,
           items: field.options
               ?.map((opt) => DropdownMenuItem(value: opt, child: Text(opt)))
               .toList(),

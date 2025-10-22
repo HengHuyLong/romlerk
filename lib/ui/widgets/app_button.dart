@@ -4,7 +4,7 @@ import 'package:romlerk/core/theme/app_typography.dart';
 
 class AppButton extends StatelessWidget {
   final String text;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed; // ✅ make nullable
   final bool isDisabled;
 
   const AppButton({
@@ -19,6 +19,7 @@ class AppButton extends StatelessWidget {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
+        // ✅ Flutter accepts null safely now
         onPressed: isDisabled ? null : onPressed,
         style: ElevatedButton.styleFrom(
           backgroundColor: isDisabled
