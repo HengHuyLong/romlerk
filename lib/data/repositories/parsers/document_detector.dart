@@ -4,18 +4,47 @@ class DocumentDetector {
   DocumentType detect(String text) {
     final lower = text.toLowerCase();
 
-    if (lower.contains("អត្តសញ្ញាណប័ណ្ណ") || lower.contains("idkhm")) {
+    // 🔹 Normalize OCR output by removing spaces, punctuation & zero-width chars
+    final cleaned = lower
+        .replaceAll(RegExp(r'[\s\p{P}]+', unicode: true), '')
+        .replaceAll(RegExp(r'[\u200B-\u200D]'), ''); // remove zero-width chars
+
+    // 🪪 NATIONAL ID
+    if (cleaned.contains("អត្តសញ្ញាណប័ណ្ណ") || cleaned.contains("idkhm")) {
       return DocumentType.nationalId;
     }
-    if (lower.contains("passport") ||
-        lower.contains("pk<khm") ||
-        lower.contains("កាសសន្ដិ")) {
+
+    // 🛂 PASSPORT
+    if (cleaned.contains("passport") ||
+        cleaned.contains("pk<khm") ||
+        cleaned.contains("កាសសន្ដិ")) {
       return DocumentType.passport;
     }
-    if (lower.contains("វិញ្ញាបនបត្រកំណើត")) {
+
+    // 👶 BIRTH CERTIFICATE (Khmer & English)
+    final hasBirthKeywords = cleaned.contains("វិញ្ញាបនបត្រកំណើត") ||
+        cleaned.contains("សំបុត្រកំណើត") ||
+        cleaned.contains("birthcertificate") ||
+        cleaned.contains("certificateofbirth");
+
+    final hasParentInfo = lower.contains("ឪពុក") ||
+        lower.contains("ម្តាយ") ||
+        lower.contains("father") ||
+        lower.contains("mother");
+
+    if (hasBirthKeywords || hasParentInfo) {
       return DocumentType.birthCertificate;
     }
-    if (lower.contains("driving license") || lower.contains("ប័ណ្ណបើកបរ")) {
+
+    // 🚗 DRIVING LICENSE (Khmer & English)
+    if (cleaned.contains("drivinglicense") ||
+        lower.contains("driving licence") || // 🇬🇧 alternate spelling
+        cleaned.contains("បណ្ណបើកបរ") ||
+        cleaned.contains("bannbokbor") ||
+        cleaned.contains("specialcondition") || // 🆕 OCR English label
+        lower.contains("special condition") || // 🆕 OCR English label
+        cleaned.contains("categories")) {
+      // 🆕 OCR English label
       return DocumentType.drivingLicense;
     }
 

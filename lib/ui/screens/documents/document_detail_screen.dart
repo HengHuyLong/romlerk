@@ -41,6 +41,8 @@ class _DocumentDetailScreenState extends ConsumerState<DocumentDetailScreen> {
         return DocumentType.passport;
       case 'driver_license':
         return DocumentType.drivingLicense;
+      case 'birth_certificate': // 🆕 add this
+        return DocumentType.birthCertificate;
       default:
         return DocumentType.nationalId;
     }
@@ -54,6 +56,8 @@ class _DocumentDetailScreenState extends ConsumerState<DocumentDetailScreen> {
         return 'Passport';
       case DocumentType.drivingLicense:
         return 'Driver License';
+      case DocumentType.birthCertificate: // 🆕 add this
+        return 'Birth Certificate';
       default:
         return 'Document';
     }

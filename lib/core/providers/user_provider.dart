@@ -1,7 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:get_storage/get_storage.dart'; // ✅ added
 import 'package:romlerk/data/models/user.dart';
-import 'package:romlerk/data/repositories/user_repository.dart';
 
 final userProvider =
     StateNotifierProvider<UserNotifier, UserModel?>((ref) => UserNotifier());

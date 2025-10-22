@@ -22,6 +22,9 @@ class DocumentPreviewScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final previewBuilder = DocumentRegistry.registry[type]?.buildPreview;
+    print("📸 [PreviewScreen] type = $type (${type.runtimeType})");
+    print(
+        "📸 [PreviewScreen] registry keys = ${DocumentRegistry.registry.keys}");
 
     return Scaffold(
       backgroundColor: AppColors.white,

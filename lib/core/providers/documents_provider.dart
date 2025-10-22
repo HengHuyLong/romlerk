@@ -3,6 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:romlerk/data/models/base_document.dart';
 import 'package:romlerk/data/models/national_id_model.dart';
+import 'package:romlerk/data/models/birth_certificate_model.dart';
+import 'package:romlerk/data/models/driver_license_model.dart';
 import 'package:romlerk/data/services/api_service.dart';
 
 /// 🔹 Provider — exposes document state throughout the app
@@ -50,6 +52,10 @@ class DocumentsNotifier extends StateNotifier<AsyncValue<List<BaseDocument>>> {
         switch (type) {
           case 'national_id':
             return NationalId.fromJson(json);
+          case 'birth_certificate':
+            return BirthCertificate.fromJson(json);
+          case 'driver_license':
+            return DriverLicense.fromJson(json); // ✅ Fixed line
           default:
             throw Exception("Unsupported document type: $type");
         }
@@ -82,6 +88,10 @@ class DocumentsNotifier extends StateNotifier<AsyncValue<List<BaseDocument>>> {
         switch (type) {
           case 'national_id':
             return NationalId.fromJson(json);
+          case 'birth_certificate':
+            return BirthCertificate.fromJson(json);
+          case 'driver_license':
+            return DriverLicense.fromJson(json); // ✅ Fixed line
           default:
             throw Exception("Unsupported document type: $type");
         }

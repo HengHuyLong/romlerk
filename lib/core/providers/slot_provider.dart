@@ -15,20 +15,37 @@ class SlotNotifier extends StateNotifier<Map<String, int>> {
   Future<void> fetchSlots() async {
     try {
       final user = _auth.currentUser;
-      if (user == null) return;
+      if (user == null) {
+        print('⚠️ No user logged in.');
+        return;
+      }
 
+      final idToken = await user.getIdToken(); // 🔑 Get Firebase Auth token
       final url = Uri.parse('$_baseUrl/users/${user.uid}');
-      final res = await http.get(url);
+
+      final res = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $idToken', // ✅ Include auth header
+        },
+      );
+
+      print('📦 Backend response (${res.statusCode}): ${res.body}');
 
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
-        if (data['slots'] != null) {
+
+        // Ensure the structure is valid
+        if (data['slots'] != null && data['slots'] is Map) {
           final slots = Map<String, dynamic>.from(data['slots']);
           state = {
-            "usedSlots": slots['usedSlots'] ?? 0,
-            "maxSlots": slots['maxSlots'] ?? 3,
+            "usedSlots": (slots['usedSlots'] ?? 0).toInt(),
+            "maxSlots": (slots['maxSlots'] ?? 3).toInt(),
           };
           print('✅ Slots loaded from backend: $state');
+        } else {
+          print('⚠️ Invalid slot data format, using defaults.');
         }
       } else {
         print('⚠️ Failed to fetch slots: ${res.statusCode}');
@@ -38,7 +55,7 @@ class SlotNotifier extends StateNotifier<Map<String, int>> {
     }
   }
 
-  /// 🟩 Use 1 slot when adding document
+  /// 🟩 Use 1 slot when adding a document
   void increaseSlot() {
     if (state["usedSlots"]! < state["maxSlots"]!) {
       final newState = {
@@ -50,7 +67,7 @@ class SlotNotifier extends StateNotifier<Map<String, int>> {
     }
   }
 
-  /// 🟥 Free 1 slot when deleting document
+  /// 🟥 Free 1 slot when deleting a document
   void decreaseSlot() {
     if (state["usedSlots"]! > 0) {
       final newState = {
@@ -71,7 +88,7 @@ class SlotNotifier extends StateNotifier<Map<String, int>> {
     };
     state = newState;
 
-    await _updateSlotsInBackend(newState); // ✅ now awaited
+    await _updateSlotsInBackend(newState);
     print(
         '🎉 Added $additionalSlots slots → new max = ${newState["maxSlots"]}');
   }
@@ -82,10 +99,15 @@ class SlotNotifier extends StateNotifier<Map<String, int>> {
       final user = _auth.currentUser;
       if (user == null) return;
 
+      final idToken = await user.getIdToken(); // ✅ Get token again
       final url = Uri.parse('$_baseUrl/users/${user.uid}/slots');
+
       final res = await http.patch(
         url,
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $idToken', // ✅ Include auth header
+        },
         body: jsonEncode({"slots": slots}),
       );
 

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:romlerk/core/providers/documents_provider.dart';
 import 'package:romlerk/core/providers/user_provider.dart';
@@ -41,6 +40,10 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen>
       curve: Curves.easeInOutCubic,
     );
     if (_expanded) _controller.value = 1.0;
+    // 🧭 Fetch slots from backend once when screen opens
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(slotProvider.notifier).fetchSlots();
+    });
   }
 
   @override
@@ -86,7 +89,7 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen>
     final profilesState = ref.watch(profilesProvider);
     final user = ref.watch(userProvider);
     final slotData = ref.watch(slotProvider);
-    final maxSlots = slotData['maxSlots'] ?? 3;
+    final maxSlots = slotData['maxSlots'] ?? 5;
     final totalDocs = _calculateTotalDocs();
 
     return SafeArea(
@@ -94,6 +97,7 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen>
         onRefresh: () async {
           await ref.read(documentsProvider.notifier).refresh();
           await ref.read(profilesProvider.notifier).fetchProfiles();
+          await ref.read(slotProvider.notifier).fetchSlots(); // ✅ Add this line
 
           final profiles = ref.read(profilesProvider).value ?? [];
           for (final p in profiles) {
@@ -572,23 +576,41 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen>
 
   Widget _buildDocumentItem(BuildContext context, dynamic doc) {
     final type = (doc.toJson()['type'] ?? '').toString();
+
+    // ✅ Updated titles for all supported document types
     final title = switch (type) {
       'national_id' => 'ID Card',
       'passport' => 'Passport',
       'driver_license' => 'Driver License',
+      'birth_certificate' => 'Birth Certificate',
       _ => 'Unknown Document',
     };
 
+    // ✅ Expiry logic — Birth Certificates are permanent
     String expiryText = "No expiry";
     Color expiryColor = AppColors.darkGray;
 
-    if (doc.expiryDate != null && doc.expiryDate!.isNotEmpty) {
-      expiryText = "Expires\n ${doc.expiryDate}";
+    if (type == 'birth_certificate') {
+      expiryText = "Permanent Document";
+      expiryColor = AppColors.green;
+    } else if (type == 'driver_license' &&
+        doc.dateOfExpiry != null &&
+        doc.dateOfExpiry!.isNotEmpty) {
+      expiryText = "Exp: ${doc.dateOfExpiry}";
+      expiryColor = AppColors.green;
+    } else if (doc.expiryDate != null && doc.expiryDate!.isNotEmpty) {
+      expiryText = "Exp: ${doc.expiryDate}";
       expiryColor = AppColors.green;
     }
 
-    final thumbAsset =
-        type == 'national_id' ? 'assets/images/idCardThumbnail.png' : null;
+    // ✅ Thumbnail mapping for different document types
+    final thumbAsset = switch (type) {
+      'national_id' => 'assets/images/idCardThumbnail.png',
+      'birth_certificate' => 'assets/images/birthcertificateThumbnail.png',
+      'passport' => 'assets/images/passportThumbnail.png',
+      'driver_license' => 'assets/images/driverThumbnail.png',
+      _ => null,
+    };
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,

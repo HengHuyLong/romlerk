@@ -1,4 +1,4 @@
-// ignore_for_file: prefer_const_constructors, use_key_in_widget_constructors
+// ignore_for_file: prefer_const_constructors, use_key_in_widget_constructors, use_build_context_synchronously
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:romlerk/core/theme/app_colors.dart';
@@ -13,6 +13,10 @@ import 'package:romlerk/core/providers/user_provider.dart';
 import 'package:romlerk/core/providers/navigation_provider.dart';
 import 'package:romlerk/core/providers/profiles_provider.dart';
 import 'package:romlerk/ui/widgets/national_id_card_widget.dart';
+import 'package:romlerk/data/models/birth_certificate_model.dart'; // 🆕
+import 'package:romlerk/ui/widgets/birth_certificate_card_widget.dart'; // 🆕
+import 'package:romlerk/data/models/driver_license_model.dart';
+import 'package:romlerk/ui/widgets/driver_license_card_widget.dart';
 import 'package:romlerk/ui/screens/documents/document_detail_screen.dart';
 import '../documents/documents_screen.dart';
 import '../scan/scan_screen.dart';
@@ -65,6 +69,7 @@ class _HomeContentState extends ConsumerState<_HomeContent> {
   final List<Map<String, dynamic>> categories = [
     {"label": "All", "icon": Icons.folder_open},
     {"label": "National ID", "icon": Icons.badge_outlined},
+    {"label": "Birth Certificate", "icon": Icons.document_scanner_outlined},
     {"label": "Passport", "icon": Icons.flight_outlined},
     {"label": "License", "icon": Icons.directions_car_outlined},
   ];
@@ -170,6 +175,15 @@ class _HomeContentState extends ConsumerState<_HomeContent> {
                                         doc is NationalId) {
                                       return true;
                                     }
+                                    if (selectedCategory ==
+                                            "Birth Certificate" &&
+                                        doc is BirthCertificate) {
+                                      return true;
+                                    }
+                                    if (selectedCategory == "License" &&
+                                        doc is DriverLicense) {
+                                      return true;
+                                    }
                                     return doc.runtimeType
                                         .toString()
                                         .toLowerCase()
@@ -228,7 +242,6 @@ class _HomeContentState extends ConsumerState<_HomeContent> {
                                                           milliseconds: 100));
                                                   if (!mounted) return;
                                                   Navigator.push(
-                                                    // ignore: use_build_context_synchronously
                                                     context,
                                                     MaterialPageRoute(
                                                       builder: (_) =>
@@ -281,6 +294,183 @@ class _HomeContentState extends ConsumerState<_HomeContent> {
                                                             doc.expiryDate!
                                                                 .isNotEmpty
                                                         ? "Expires: ${doc.expiryDate}"
+                                                        : "No expiry",
+                                                    style: AppTypography.body
+                                                        .copyWith(
+                                                      color: AppColors.green,
+                                                      fontSize: 12,
+                                                      fontWeight:
+                                                          FontWeight.w500,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        );
+                                      }
+                                      if (doc is BirthCertificate) {
+                                        return Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Material(
+                                              color: Colors.white,
+                                              borderRadius:
+                                                  BorderRadius.circular(14),
+                                              elevation: 2,
+                                              clipBehavior: Clip.antiAlias,
+                                              child: InkWell(
+                                                borderRadius:
+                                                    BorderRadius.circular(14),
+                                                splashColor: AppColors.green
+                                                    .withValues(alpha: 0.25),
+                                                highlightColor: AppColors.green
+                                                    .withValues(alpha: 0.1),
+                                                onTap: () async {
+                                                  await Future.delayed(
+                                                      const Duration(
+                                                          milliseconds: 100));
+                                                  if (!mounted) return;
+                                                  Navigator.push(
+                                                    context,
+                                                    MaterialPageRoute(
+                                                      builder: (_) =>
+                                                          DocumentDetailScreen(
+                                                              document: doc),
+                                                    ),
+                                                  );
+                                                },
+                                                child: Padding(
+                                                  padding:
+                                                      const EdgeInsets.all(8.0),
+                                                  child: SizedBox(
+                                                    width: 360,
+                                                    height:
+                                                        400, // ✅ Smaller fixed preview
+                                                    child: AbsorbPointer(
+                                                      // 🧩 disable gestures & scroll inside
+                                                      absorbing:
+                                                          true, // disable all touch/scroll interactions
+                                                      child:
+                                                          BirthCertificateCardWidget(
+                                                              cert: doc),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                            Padding(
+                                              padding: const EdgeInsets.only(
+                                                  left: 8, top: 6, bottom: 12),
+                                              child: Row(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment
+                                                        .spaceBetween,
+                                                children: [
+                                                  Text(
+                                                    "Birth Certificate",
+                                                    style: AppTypography.body
+                                                        .copyWith(
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      color: AppColors.darkGray,
+                                                      fontSize: 13,
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    "Permanent Document",
+                                                    style: AppTypography.body
+                                                        .copyWith(
+                                                      color: AppColors.darkGray,
+                                                      fontSize: 12,
+                                                      fontWeight:
+                                                          FontWeight.w500,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        );
+                                      }
+                                      // ===== 🆕 Driver License =====
+                                      if (doc is DriverLicense) {
+                                        return Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Material(
+                                              color: Colors.white,
+                                              borderRadius:
+                                                  BorderRadius.circular(14),
+                                              elevation: 2,
+                                              clipBehavior: Clip.antiAlias,
+                                              child: InkWell(
+                                                borderRadius:
+                                                    BorderRadius.circular(14),
+                                                splashColor: AppColors.green
+                                                    .withValues(alpha: 0.25),
+                                                highlightColor: AppColors.green
+                                                    .withValues(alpha: 0.1),
+                                                onTap: () async {
+                                                  await Future.delayed(
+                                                      const Duration(
+                                                          milliseconds: 100));
+                                                  if (!mounted) return;
+                                                  Navigator.push(
+                                                    context,
+                                                    MaterialPageRoute(
+                                                      builder: (_) =>
+                                                          DocumentDetailScreen(
+                                                              document: doc),
+                                                    ),
+                                                  );
+                                                },
+                                                child: Padding(
+                                                  padding:
+                                                      const EdgeInsets.all(8.0),
+                                                  child: FittedBox(
+                                                    alignment:
+                                                        Alignment.topCenter,
+                                                    fit: BoxFit.scaleDown,
+                                                    child: ConstrainedBox(
+                                                      constraints:
+                                                          const BoxConstraints(
+                                                        maxWidth: 390,
+                                                        maxHeight: 300,
+                                                      ),
+                                                      child:
+                                                          DriverLicenseCardWidget(
+                                                              license: doc),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                            Padding(
+                                              padding: const EdgeInsets.only(
+                                                  left: 8, top: 6, bottom: 12),
+                                              child: Row(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment
+                                                        .spaceBetween,
+                                                children: [
+                                                  Text(
+                                                    "Driver License",
+                                                    style: AppTypography.body
+                                                        .copyWith(
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      color: AppColors.darkGray,
+                                                      fontSize: 13,
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    doc.dateOfExpiry != null &&
+                                                            doc.dateOfExpiry!
+                                                                .isNotEmpty
+                                                        ? "Expires: ${doc.dateOfExpiry}"
                                                         : "No expiry",
                                                     style: AppTypography.body
                                                         .copyWith(
