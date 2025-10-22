@@ -11,6 +11,7 @@ import 'package:romlerk/core/theme/app_colors.dart';
 import 'package:romlerk/core/theme/app_typography.dart';
 import 'package:romlerk/data/services/payment_service.dart';
 import 'package:romlerk/core/providers/navigation_provider.dart';
+import 'package:romlerk/core/providers/slot_provider.dart'; // ✅ added
 import 'package:url_launcher/url_launcher_string.dart';
 
 class PaymentConfirmScreen extends ConsumerStatefulWidget {
@@ -51,6 +52,7 @@ class _PaymentConfirmScreenState extends ConsumerState<PaymentConfirmScreen> {
         tranId: tranId,
         amount: amount,
         uid: user.uid,
+        planName: widget.planName,
       );
 
       if (responseData == null) {
@@ -136,8 +138,24 @@ class _PaymentConfirmScreenState extends ConsumerState<PaymentConfirmScreen> {
     });
   }
 
-  // ✅ Success dialog (green checkmark)
-  void _showSuccessDialog(String message) {
+  // ✅ Success dialog (with slot update logic)
+  void _showSuccessDialog(String message) async {
+    int addCount = 0;
+
+    // ✅ Detect which plan was purchased
+    if (widget.planName.contains('5')) {
+      addCount = 5;
+    } else if (widget.planName.contains('10')) {
+      addCount = 10;
+    } else if (widget.planName.contains('20')) {
+      addCount = 20;
+    }
+
+    // ✅ Update Firestore slots via backend
+    if (addCount > 0) {
+      await ref.read(slotProvider.notifier).addSlots(addCount);
+    }
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -261,8 +279,6 @@ class _PaymentConfirmScreenState extends ConsumerState<PaymentConfirmScreen> {
                   ),
                 ),
                 const SizedBox(height: 24),
-
-                // ✅ Direct ABA deep link only
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
@@ -297,7 +313,6 @@ class _PaymentConfirmScreenState extends ConsumerState<PaymentConfirmScreen> {
                     },
                   ),
                 ),
-
                 const SizedBox(height: 14),
                 TextButton(
                   onPressed: () => Navigator.pop(context),

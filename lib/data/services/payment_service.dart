@@ -9,11 +9,13 @@ class PaymentService {
   static Future<Map<String, dynamic>?> createPayment({
     required String tranId,
     required double amount,
-    required String uid, // ✅ add user UID
+    required String uid,
+    required String planName, // ✅ added plan name
   }) async {
     try {
       final body = {
-        "uid": uid, // ✅ new field to link payment with user in Firestore
+        "uid": uid, // ✅ link payment to user
+        "plan_name": planName, // ✅ send selected plan to backend
         "merchant_id": "ec462093",
         "tran_id": tranId,
         "first_name": "ABA",
@@ -24,10 +26,10 @@ class PaymentService {
         "currency": "USD",
         "purchase_type": "purchase",
         "payment_option": "abapay_khqr",
-        // ✅ Must match backend’s ABA_CALLBACK_URL (.env)
+        // ✅ Must match backend ABA_CALLBACK_URL (.env)
         "callback_url": "https://romlerk-backend.onrender.com/payment/callback",
         "return_deeplink": "",
-        "lifetime": 6
+        "lifetime": 6,
       };
 
       final response = await http.post(
@@ -41,6 +43,8 @@ class PaymentService {
 
         if (data['success'] == true && data['data'] != null) {
           final inner = data['data'];
+
+          // ✅ Ensure abapay_deeplink always accessible
           return {
             ...inner,
             'abapay_deeplink': inner['abapay_deeplink'] ??
@@ -48,10 +52,10 @@ class PaymentService {
                 inner['data']?['data']?['abapay_deeplink'],
           };
         } else {
-          print('⚠️ Invalid response structure: ${response.body}');
+          print('⚠️ Invalid payment response: ${response.body}');
         }
       } else {
-        print('❌ Payment request failed: ${response.statusCode}');
+        print('❌ Payment request failed [${response.statusCode}]');
         print('🔍 Response body: ${response.body}');
       }
     } catch (e) {
